@@ -66,7 +66,6 @@ void getPositioin(struct MyLink *p)
 
     while (temp->next != NULL)
     {
-        temp = temp->next;
         Serial.print("short: ");
         Serial.print(temp->anchor_addr, HEX);
         Serial.print(" range: ");
@@ -74,6 +73,7 @@ void getPositioin(struct MyLink *p)
         Serial.print(" m");
         Serial.print(" dbm: ");
         Serial.println(temp->dbm);
+        temp = temp->next;
     }
 }
 
