@@ -124,6 +124,16 @@ void loop()
   /* Increment frame sequence number after transmission of the poll message (modulo 256). */
   frame_seq_nb++;
 
+  if(receive_response(rx_resp_msg_A, &distance_A)) {
+    Serial.println("Received response from both anchors");
+    Serial.println("Distance A: " + String(distance_A) + "m");
+  }
+
+    if(receive_response(rx_resp_msg_B, &distance_B)) {
+        Serial.println("Received response from both anchors");
+        Serial.println("Distance B: " + String(distance_B) + "m");
+    }
+
   // 앵커 A와 B로부터의 응답 수신 및 처리
     if (receive_response(rx_resp_msg_A, &distance_A) && receive_response(rx_resp_msg_B, &distance_B)) {
         Serial.println("Received response from both anchors");
@@ -153,8 +163,28 @@ bool receive_response(uint8_t* expected_msg, double* distance) {
 }
 
 void calculate_distance(uint8_t* buffer, double* distance) {
-    // 거리 계산 로직
-    // 특정 앵커로부터의 거리를 계산하여 distance에 저장
+    uint32_t poll_tx_ts, resp_rx_ts, poll_rx_ts, resp_tx_ts;
+    int32_t rtd_init, rtd_resp;
+    float clockOffsetRatio;
+
+    // 타임스탬프 추출
+    poll_tx_ts = dwt_readtxtimestamplo32();       // 폴 메시지의 전송 타임스탬프
+    resp_rx_ts = dwt_readrxtimestamplo32();       // 응답 메시지의 수신 타임스탬프
+    resp_msg_get_ts(&buffer[RESP_MSG_POLL_RX_TS_IDX], &poll_rx_ts);  // 폴 메시지의 수신 타임스탬프
+    resp_msg_get_ts(&buffer[RESP_MSG_RESP_TX_TS_IDX], &resp_tx_ts);  // 응답 메시지의 전송 타임스탬프
+
+    // 캐리어 적분기 값 읽기 및 클럭 오프셋 비율 계산
+    clockOffsetRatio = ((float)dwt_readclockoffset()) / (uint32_t)(1 << 26);
+
+    // 왕복 지연 시간(Round Trip Delay) 계산
+    rtd_init = resp_rx_ts - poll_tx_ts;           // 초기 왕복 지연 시간
+    rtd_resp = resp_tx_ts - poll_rx_ts;           // 응답 왕복 지연 시간
+
+    // 시간 오차를 고려한 실제 비행 시간(Time of Flight, TOF) 계산
+    double tof = ((rtd_init - rtd_resp * (1 - clockOffsetRatio)) / 2.0) * DWT_TIME_UNITS;
+
+    // 거리 계산 (TOF × 빛의 속도)
+    *distance = tof * SPEED_OF_LIGHT;
 }
 
 void estimate_position(double distance_A, double distance_B) {
