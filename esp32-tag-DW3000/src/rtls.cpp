@@ -49,6 +49,8 @@ extern dwt_txconfig_t txconfig_options;
 
 void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance);
 
+void calculate_Distance(uint8_t* buffer, double *distance);
+
 void RTLS_Task(void *parameter)
 {
     spiBegin(PIN_IRQ, PIN_RST);
@@ -58,14 +60,12 @@ void RTLS_Task(void *parameter)
 
     while (!dwt_checkidlerc()) // Need to make sure DW IC is in IDLE_RC before proceeding
     {
-        UART_puts("IDLE FAILED\r\n");
         while (1)
             ;
     }
 
     if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR)
     {
-        UART_puts("INIT FAILED\r\n");
         while (1)
             ;
     }
@@ -76,7 +76,6 @@ void RTLS_Task(void *parameter)
     /* Configure DW IC. See NOTE 6 below. */
     if (dwt_configure(&config)) // if the dwt_configure returns DWT_ERROR either the PLL or RX calibration has failed the host should reset the device
     {
-        UART_puts("CONFIG FAILED\r\n");
         while (1)
             ;
     }
@@ -113,6 +112,8 @@ void RTLS_Task(void *parameter)
         poll_And_Recieve(tx_poll_msg_B, rx_resp_msg_B, POLL_MSG_SIZE, RESP_MSG_SIZE, &distance_B);
         Serial.print("Distance B: ");
         Serial.println(distance_B);
+
+        delay(10);
     }
 }
 
