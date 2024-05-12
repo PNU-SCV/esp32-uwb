@@ -20,26 +20,7 @@
 
 
 /* Default communication configuration. We use default non-STS DW mode. */
-// static dwt_config_t config = {
-//     5,                /* Channel number. */
-//     DWT_PLEN_128,     /* Preamble length. Used in TX only. */
-//     DWT_PAC8,         /* Preamble acquisition chunk size. Used in RX only. */
-//     9,                /* TX preamble code. Used in TX only. */
-//     9,                /* RX preamble code. Used in RX only. */
-//     1,                /* 0 to use standard 8 symbol SFD, 1 to use non-standard 8 symbol, 2 for non-standard 16 symbol SFD and 3 for 4z 8 symbol SDF type */
-//     DWT_BR_6M8,       /* Data rate. */
-//     DWT_PHRMODE_STD,  /* PHY header mode. */
-//     DWT_PHRRATE_STD,  /* PHY header rate. */
-//     (129 + 8 - 8),    /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
-//     DWT_STS_MODE_OFF, /* STS disabled */
-//     DWT_STS_LEN_64,   /* STS length see allowed values in Enum dwt_sts_lengths_e */
-//     DWT_PDOA_M0       /* PDOA mode off */
-// };
-
-/* Configuration option SP3.
- * Channel 5, PRF 64M, Preamble Length 128, PAC 8, Preamble code 9, Data Rate 6.8M, STS Length 128, STS Mode 3
- */
-dwt_config_t config_option_sp3 = {
+static dwt_config_t config = {
     5,                  /* Channel number. */
     DWT_PLEN_128,       /* Preamble length. Used in TX only. */
     DWT_PAC8,           /* Preamble acquisition chunk size. Used in RX only. */
@@ -50,8 +31,8 @@ dwt_config_t config_option_sp3 = {
     DWT_PHRMODE_STD,    /* PHY header mode. */
     DWT_PHRRATE_STD,    /* PHY header rate. */
     (128 + 1 + 8 - 8),  /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
-    DWT_STS_MODE_ND,    /* Mode 3 STS (no data) enabled */
-    DWT_STS_LEN_128,    /* (STS length  in blocks of 8) - 1*/
+    DWT_STS_MODE_OFF,   /* STS Off */
+    DWT_STS_LEN_128,    /* Ignore value when STS is disabled */
     DWT_PDOA_M0         /* PDOA mode off */
 };
 
@@ -68,6 +49,8 @@ extern dwt_txconfig_t txconfig_options;
 
 void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance);
 
+void calculate_Distance(uint8_t* buffer, double *distance);
+
 void RTLS_Task(void *parameter)
 {
     spiBegin(PIN_IRQ, PIN_RST);
@@ -77,14 +60,12 @@ void RTLS_Task(void *parameter)
 
     while (!dwt_checkidlerc()) // Need to make sure DW IC is in IDLE_RC before proceeding
     {
-        UART_puts("IDLE FAILED\r\n");
         while (1)
             ;
     }
 
     if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR)
     {
-        UART_puts("INIT FAILED\r\n");
         while (1)
             ;
     }
@@ -95,7 +76,6 @@ void RTLS_Task(void *parameter)
     /* Configure DW IC. See NOTE 6 below. */
     if (dwt_configure(&config)) // if the dwt_configure returns DWT_ERROR either the PLL or RX calibration has failed the host should reset the device
     {
-        UART_puts("CONFIG FAILED\r\n");
         while (1)
             ;
     }
