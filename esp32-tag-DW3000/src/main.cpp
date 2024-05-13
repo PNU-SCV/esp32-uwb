@@ -35,6 +35,7 @@ void setup()
     //               0,
     //               DWT_ENABLE_INT);
     dwt_setinterrupt(SYS_ENABLE_LO_RXFCG_ENABLE_BIT_MASK, 0, DWT_ENABLE_INT);
+    // 이후 SPI 설정에서 이를 덮어쓸 수도 있음.
 
     /* Create FreeRTOS Tasks Begin */
     xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 4096, NULL, 1, &Rx_Callback_Handle, 1);

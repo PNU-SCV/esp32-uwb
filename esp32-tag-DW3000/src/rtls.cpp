@@ -59,7 +59,6 @@ void RTLS_Task(void *parameter)
     spiSelect(PIN_SS);
 
     
-
     delay(2); // Time needed for DW3000 to start up (transition from INIT_RC to IDLE_RC, or could wait for SPIRDY event)
 
     while (!dwt_checkidlerc()) // Need to make sure DW IC is in IDLE_RC before proceeding
@@ -137,7 +136,7 @@ void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_siz
     // Take for Notification of Rx_Callback_ISR's xTaskNotifyFromISR(Rx_Callback_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken)
     notify_return = ulTaskNotifyTake(pdTRUE, Rx_Delay);
 
-    if(notify_return == pdTRUE)
+    if(notify_return > 0)
     {
         Serial.println("Rx_Callback_ISR has been called");
     }
