@@ -18,6 +18,8 @@
 #define POLL_MSG_SIZE 12
 #define RESP_MSG_SIZE 20
 
+#define Rx_Delay 1000
+
 
 /* Default communication configuration. We use default non-STS DW mode. */
 static dwt_config_t config = {
@@ -26,7 +28,7 @@ static dwt_config_t config = {
     DWT_PAC8,           /* Preamble acquisition chunk size. Used in RX only. */
     9,                  /* TX preamble code. Used in TX only. */
     9,                  /* RX preamble code. Used in RX only. */
-    3,                  /* 0 to use standard 8 symbol SFD, 1 to use non-standard 8 symbol, 2 for non-standard 16 symbol SFD and 3 for 4z 8 symbol SDF type */
+    1,                  /* 0 to use standard 8 symbol SFD, 1 to use non-standard 8 symbol, 2 for non-standard 16 symbol SFD and 3 for 4z 8 symbol SDF type */
     DWT_BR_6M8,         /* Data rate. */
     DWT_PHRMODE_STD,    /* PHY header mode. */
     DWT_PHRRATE_STD,    /* PHY header rate. */
@@ -55,6 +57,8 @@ void RTLS_Task(void *parameter)
 {
     spiBegin(PIN_IRQ, PIN_RST);
     spiSelect(PIN_SS);
+
+    
 
     delay(2); // Time needed for DW3000 to start up (transition from INIT_RC to IDLE_RC, or could wait for SPIRDY event)
 
@@ -118,6 +122,8 @@ void RTLS_Task(void *parameter)
 
 void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance)
 {
+    uint32_t notify_return;
+
     /* Write frame data to DW IC and prepare transmission. See NOTE 7 below. */
     poll_msg[ALL_MSG_SN_IDX] = frame_seq_nb;
     dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
@@ -128,10 +134,23 @@ void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_siz
      * set by dwt_setrxaftertxdelay() has elapsed. */
     dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
     
-    /* We assume that the transmission is achieved correctly, poll for reception of a frame or error/timeout. See NOTE 8 below. */
-    while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
+    // Take for Notification of Rx_Callback_ISR's xTaskNotifyFromISR(Rx_Callback_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken)
+    notify_return = ulTaskNotifyTake(pdTRUE, Rx_Delay);
+
+    if(notify_return == pdTRUE)
     {
-    };
+        Serial.println("Rx_Callback_ISR has been called");
+    }
+    else
+    {
+        Serial.println("Rx_Callback_ISR has not been called");
+        return;
+    }
+    
+    // /* We assume that the transmission is achieved correctly, poll for reception of a frame or error/timeout. See NOTE 8 below. */
+    // while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
+    // {
+    // };
     
     /* Increment frame sequence number after transmission of the poll message (modulo 256). */
     frame_seq_nb++;
