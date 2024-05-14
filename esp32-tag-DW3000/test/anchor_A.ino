@@ -1,3 +1,5 @@
+#include <Arduino.h>
+#include <WiFi.h>
 #include "dw3000.h"
 #include "SPI.h"
 
@@ -16,6 +18,20 @@ extern SPISettings _fastSPI;
 #define RESP_MSG_TS_LEN 4
 #define POLL_RX_TO_RESP_TX_DLY_UUS 450
 
+#define TIME_SLOT_SEQ_LENTH 250
+#define TIME_SLOT_LENGTH 30
+#define TIME_SLOT_COUNT 8
+
+// TODO: Change this value to the desired time slot index
+#define TIME_SLOT_IDX 1
+
+const char *ssid = "ESP32-Access-Point";
+const char *password = "123456789";
+const long gmtOffset_sec = 0;
+const int daylightOffset_sec = 0;
+
+uint32_t lastSyncedTime = 0;
+
 /* Default communication configuration. We use default non-STS DW mode. */
 static dwt_config_t config = {
     5,                /* Channel number. */
@@ -33,8 +49,8 @@ static dwt_config_t config = {
     DWT_PDOA_M0       /* PDOA mode off */
 };
 
-static uint8_t rx_poll_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'G', 'A', 0xE0, 0, 0};
-static uint8_t tx_resp_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'N', 'C', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static uint8_t rx_poll_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'A', 'T', 'A', 0xE0, 0, 0};
+static uint8_t tx_resp_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'A', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static uint8_t frame_seq_nb = 0;
 static uint8_t rx_buffer[20];
 static uint32_t status_reg = 0;
@@ -43,9 +59,47 @@ static uint64_t resp_tx_ts;
 
 extern dwt_txconfig_t txconfig_options;
 
+uint32_t getCurrentTime(void)
+{
+    return millis() - lastSyncedTime;
+}
+
 void setup()
 {
   UART_init();
+
+  /***************** TIME Sync Begin ******************/
+    // Connect to Wi-Fi
+    WiFi.softAP(ssid, password);
+    while(WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.println("Connecting to WiFi..");
+    }
+    Serial.println("WiFi connected");
+
+    // Start NTP
+    configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
+
+
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+
+    uint32_t lastSecond = timeinfo.tm_sec;
+    
+    while(timeinfo.tm_sec == lastSecond)
+    {
+        delay(1);
+        time(&now);
+        localtime_r(&now, &timeinfo);
+    }
+
+    lastSyncedTime = millis();
+
+
+    /***************** TIME Sync End ******************/
 
   _fastSPI = SPISettings(16000000L, MSBFIRST, SPI_MODE0);
 
@@ -148,6 +202,9 @@ void loop()
         /* If dwt_starttx() returns an error, abandon this ranging exchange and proceed to the next one. See NOTE 10 below. */
         if (ret == DWT_SUCCESS)
         {
+          /* Polling for TDMA TIME SLOT */
+          while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) % 4 != TIME_SLOT_IDX);
+
           /* Poll DW IC until TX frame sent event set. See NOTE 6 below. */
           while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS_BIT_MASK))
           {

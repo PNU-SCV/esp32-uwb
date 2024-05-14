@@ -18,19 +18,12 @@
 #define POLL_MSG_SIZE 12
 #define RESP_MSG_SIZE 20
 
-#define Rx_Delay 1000
+#define TIME_SLOT_SEQ_LENTH 250
+#define TIME_SLOT_LENGTH 30
+#define TIME_SLOT_COUNT 8
 
-// void Tx_Task(void *parameter);
-
-// void Rx_Task(void *parameter);
-
-// void Rx_Timeout_Task(void *parameter);
-
-// void Rx_Error_Task(void *parameter);
-
-// void Spi_Error_Task(void *parameter);
-
-// void Spi_Ready_Task(void *parameter);
+// TODO: Change this value to the desired time slot index
+#define TIME_SLOT_IDX 0
 
 void RTLS_Task(void *parameter);
 

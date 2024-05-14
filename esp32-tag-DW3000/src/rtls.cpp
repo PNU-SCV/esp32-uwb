@@ -2,15 +2,22 @@
 #include "dw3000.h"
 #include "rtls.h"
 
-static uint8_t tx_poll_msg_A[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'G', 'A', 0xE0, 0, 0};
-static uint8_t tx_poll_msg_B[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'G', 'B', 0xE0, 0, 0};
-static uint8_t rx_resp_msg_A[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'N', 'C', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-static uint8_t rx_resp_msg_B[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'N', 'C', 'B', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+uint32_t lastSyncedTime = 0;
+
+static uint8_t tx_poll_msg_A[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'A', 'T', 'A', 0xE0, 0, 0};
+static uint8_t tx_poll_msg_B[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'B', 'T', 'A', 0xE0, 0, 0};
+static uint8_t rx_resp_msg_A[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'A', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static uint8_t rx_resp_msg_B[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'A', 'B', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static uint8_t frame_seq_nb = 0;
 static uint8_t rx_buffer[20];
 static uint32_t status_reg = 0;
 static double tof;
 static double distance_A, distance_B;
+
+uint32_t getCurrentTime(void)
+{
+    return millis() - lastSyncedTime;
+}
 
 void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance);
 
@@ -40,35 +47,24 @@ void RTLS_Task(void *parameter)
 
 void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance)
 {
-    uint32_t notify_return;
-
     /* Write frame data to DW IC and prepare transmission. See NOTE 7 below. */
     poll_msg[ALL_MSG_SN_IDX] = frame_seq_nb;
     dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
     dwt_writetxdata(poll_msg_size, poll_msg, 0); /* Zero offset in TX buffer. */
     dwt_writetxfctrl(poll_msg_size, 0, 1);       /* Zero offset in TX buffer, ranging. */
-    
+
+
+    /* Polling for TDMA TIME SLOT */
+    while((((((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) + 8) % 11) - 8) != TIME_SLOT_IDX);
+
     /* Start transmission, indicating that a response is expected so that reception is enabled automatically after the frame is sent and the delay
      * set by dwt_setrxaftertxdelay() has elapsed. */
     dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
     
-    // Take for Notification of Rx_Callback_ISR's xTaskNotifyFromISR(Rx_Callback_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken)
-    notify_return = ulTaskNotifyTake(pdTRUE, Rx_Delay);
-
-    if(notify_return > 0)
+    /* We assume that the transmission is achieved correctly, poll for reception of a frame or error/timeout. See NOTE 8 below. */
+    while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
     {
-        Serial.println("Rx_Callback_ISR has been called");
-    }
-    else
-    {
-        Serial.println("Rx_Callback_ISR has not been called");
-        return;
-    }
-    
-    // /* We assume that the transmission is achieved correctly, poll for reception of a frame or error/timeout. See NOTE 8 below. */
-    // while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
-    // {
-    // };
+    };
     
     /* Increment frame sequence number after transmission of the poll message (modulo 256). */
     frame_seq_nb++;

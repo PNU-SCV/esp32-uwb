@@ -1,6 +1,15 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <time.h>
 #include "dw3000.h"
 #include "rtls.h"
+
+const char *ssid = "ESP32-Access-Point";
+const char *password = "123456789";
+const long gmtOffset_sec = 0;
+const int daylightOffset_sec = 0;
+
+extern uint32_t lastSyncedTime;
 
 /* Default communication configuration. We use default non-STS DW mode. */
 static dwt_config_t config = {
@@ -21,23 +30,43 @@ static dwt_config_t config = {
 
 extern dwt_txconfig_t txconfig_options;
 
-TaskHandle_t Tx_Callback_Handle = NULL, Rx_Callback_Handle = NULL, Rx_Timeout_Handle = NULL, Rx_Error_Handle = NULL, Spi_Error_Handle = NULL, Spi_Ready_Handle = NULL;
-
-void Tx_Callback_ISR(const dwt_cb_data_t *cb_data);
-
-void Rx_Callback_ISR(const dwt_cb_data_t *cb_data);
-
-void Rx_Timeout_ISR(const dwt_cb_data_t *cb_data);
-
-void Rx_Error_ISR(const dwt_cb_data_t *cb_data);
-
-void Spi_Error_ISR(const dwt_cb_data_t *cb_data);
-
-void Spi_Ready_ISR(const dwt_cb_data_t *cb_data);
 
 void setup()
 {
     Serial.begin(115200);
+
+    /***************** TIME Sync Begin ******************/
+    // Connect to Wi-Fi
+    WiFi.softAP(ssid, password);
+    while(WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.println("Connecting to WiFi..");
+    }
+    Serial.println("WiFi connected");
+
+    // Start NTP
+    configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
+
+
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+
+    uint32_t lastSecond = timeinfo.tm_sec;
+    
+    while(timeinfo.tm_sec == lastSecond)
+    {
+        delay(1);
+        time(&now);
+        localtime_r(&now, &timeinfo);
+    }
+
+    lastSyncedTime = millis();
+
+
+    /***************** TIME Sync End ******************/
 
     /***************** RTLS Setup Begin *****************/
     spiBegin(PIN_IRQ, PIN_RST);
@@ -85,74 +114,18 @@ void setup()
     dwt_setlnapamode(DWT_LNA_ENABLE | DWT_PA_ENABLE);
 
     // dwt_setcallbacks(&Tx_Callback_ISR, &Rx_Callback_ISR, &Rx_Timeout_ISR, &Rx_Error_ISR, &Spi_Error_ISR, &Spi_Ready_ISR);
-    dwt_setcallbacks(NULL, &Rx_Callback_ISR, NULL, NULL, NULL, NULL);
+    // dwt_setcallbacks(NULL, &Rx_Callback_ISR, NULL, NULL, NULL, NULL);
 
-    // dwt_setinterrupt(
-    //               SYS_ENABLE_LO_TXFRS_ENABLE_BIT_MASK |
-    //               SYS_ENABLE_LO_RXFCG_ENABLE_BIT_MASK |
-    //               SYS_ENABLE_LO_RXFTO_ENABLE_BIT_MASK |
-    //               SYS_ENABLE_LO_RXPTO_ENABLE_BIT_MASK |
-    //               SYS_ENABLE_LO_RXPHE_ENABLE_BIT_MASK |
-    //               SYS_ENABLE_LO_RXFCE_ENABLE_BIT_MASK |
-    //               SYS_ENABLE_LO_RXFSL_ENABLE_BIT_MASK |
-    //               SYS_ENABLE_LO_RXSTO_ENABLE_BIT_MASK,
-    //               0,
-    //               DWT_ENABLE_INT);
-
-
-    dwt_setinterrupt(SYS_ENABLE_LO_RXFCG_ENABLE_BIT_MASK, 0, DWT_ENABLE_INT);
+    // dwt_setinterrupt(SYS_ENABLE_LO_RXFCG_ENABLE_BIT_MASK, 0, DWT_ENABLE_INT);
     // 이후 SPI 설정에서 이를 덮어쓸 수도 있음.
 
     /***************** RTLS Setup End *****************/
 
     /* Create FreeRTOS Tasks Begin */
-    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 4096, NULL, 1, &Rx_Callback_Handle, 1);
+    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 4096, NULL, 1, NULL, 1);
 }
 
 void loop()
 {
     
-}
-
-void Tx_Callback_ISR(const dwt_cb_data_t *cb_data)
-{
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xTaskNotifyFromISR(Tx_Callback_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-void Rx_Callback_ISR(const dwt_cb_data_t *cb_data)
-{
-    // Notify RTLS_Task that Rx_Callback_ISR has been called (Posting for "uint32_t notify_return = ulTaskNotifyTake(pdTRUE, portMAX_DELAY)")
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xTaskNotifyFromISR(Rx_Callback_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-void Rx_Timeout_ISR(const dwt_cb_data_t *cb_data)
-{
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xTaskNotifyFromISR(Rx_Timeout_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-void Rx_Error_ISR(const dwt_cb_data_t *cb_data)
-{
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xTaskNotifyFromISR(Rx_Error_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-void Spi_Error_ISR(const dwt_cb_data_t *cb_data)
-{
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xTaskNotifyFromISR(Spi_Error_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-
-void Spi_Ready_ISR(const dwt_cb_data_t *cb_data)
-{
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xTaskNotifyFromISR(Spi_Ready_Handle, cb_data->status, eSetValueWithOverwrite, &xHigherPriorityTaskWoken);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
