@@ -19,11 +19,12 @@ extern SPISettings _fastSPI;
 #define POLL_RX_TO_RESP_TX_DLY_UUS 450
 
 #define TIME_SLOT_SEQ_LENTH 250
-#define TIME_SLOT_LENGTH 30
-#define TIME_SLOT_COUNT 8
+#define TIME_SLOT_LENGTH 60
+#define TIME_SLOT_COUNT 4
+#define ANCHOR_COUNT 2
 
 // TODO: Change this value to the desired time slot index
-#define TIME_SLOT_IDX 3
+#define TIME_SLOT_IDX 1
 
 const char *ssid = "ESP32-Access-Point";
 const char *password = "123456789";
@@ -70,33 +71,33 @@ void setup()
 
   /***************** TIME Sync Begin ******************/
     // Connect to Wi-Fi
-    // WiFi.softAP(ssid, password);
-    // while(WiFi.status() != WL_CONNECTED)
-    // {
-    //     delay(500);
-    //     Serial.println("Connecting to WiFi..");
-    // }
-    // Serial.println("WiFi connected");
+    WiFi.softAP(ssid, password);
+    while(WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.println("Connecting to WiFi..");
+    }
+    Serial.println("WiFi connected");
 
-    // // Start NTP
-    // configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
+    // Start NTP
+    configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
 
 
-    // time_t now;
-    // struct tm timeinfo;
-    // time(&now);
-    // localtime_r(&now, &timeinfo);
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
 
-    // uint32_t lastSecond = timeinfo.tm_sec;
+    uint32_t lastSecond = timeinfo.tm_sec;
     
-    // while(timeinfo.tm_sec == lastSecond)
-    // {
-    //     delay(1);
-    //     time(&now);
-    //     localtime_r(&now, &timeinfo);
-    // }
+    while(timeinfo.tm_sec == lastSecond)
+    {
+        delay(1);
+        time(&now);
+        localtime_r(&now, &timeinfo);
+    }
 
-    // lastSyncedTime = millis();
+    lastSyncedTime = millis();
 
 
     /***************** TIME Sync End ******************/
@@ -150,6 +151,9 @@ void setup()
 
 void loop()
 {
+    /* Polling for TDMA TIME SLOT */
+    while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) % ANCHOR_COUNT != TIME_SLOT_IDX);
+
   /* Activate reception immediately. */
     dwt_rxenable(DWT_START_RX_IMMEDIATE);
 
@@ -202,8 +206,7 @@ void loop()
           /* If dwt_starttx() returns an error, abandon this ranging exchange and proceed to the next one. See NOTE 10 below. */
           if (ret == DWT_SUCCESS)
           {
-            // /* Polling for TDMA TIME SLOT */
-            // while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) % 4 != TIME_SLOT_IDX);
+            
 
             /* Poll DW IC until TX frame sent event set. See NOTE 6 below. */
             while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS_BIT_MASK))

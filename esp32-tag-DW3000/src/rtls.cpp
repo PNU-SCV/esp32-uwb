@@ -19,7 +19,7 @@ uint32_t getCurrentTime(void)
     return millis() - lastSyncedTime;
 }
 
-void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance);
+void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance, uint8_t time_slot_idx);
 
 void calculate_Distance(uint8_t* buffer, double *distance);
 
@@ -34,28 +34,29 @@ void RTLS_Task(void *parameter)
             * The device with the tag address will send a poll message to the device with the anchor address.
             * The anchor will receive the poll message and send a response message to the tag.
             * The tag will receive the response message and calculate the distance between the two devices. */
-        poll_And_Recieve(tx_poll_msg_A, rx_resp_msg_A, POLL_MSG_SIZE, RESP_MSG_SIZE, &distance_A);
+        poll_And_Recieve(tx_poll_msg_A, rx_resp_msg_A, POLL_MSG_SIZE, RESP_MSG_SIZE, &distance_A, TIME_SLOT_IDX_0);
         Serial.print("Distance A: ");
         Serial.println(distance_A);
 
-        poll_And_Recieve(tx_poll_msg_B, rx_resp_msg_B, POLL_MSG_SIZE, RESP_MSG_SIZE, &distance_B);
+        poll_And_Recieve(tx_poll_msg_B, rx_resp_msg_B, POLL_MSG_SIZE, RESP_MSG_SIZE, &distance_B, TIME_SLOT_IDX_1);
         Serial.print("Distance B: ");
         Serial.println(distance_B);
     }
 }
 
 
-void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance)
+void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance, uint8_t time_slot_idx)
 {
+    /* Polling for TDMA TIME SLOT */
+    while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) != time_slot_idx);
+
+    vTaskDelay(pdMS_TO_TICKS(2));
+    
     /* Write frame data to DW IC and prepare transmission. See NOTE 7 below. */
     poll_msg[ALL_MSG_SN_IDX] = frame_seq_nb;
     dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
     dwt_writetxdata(poll_msg_size, poll_msg, 0); /* Zero offset in TX buffer. */
     dwt_writetxfctrl(poll_msg_size, 0, 1);       /* Zero offset in TX buffer, ranging. */
-
-
-    /* Polling for TDMA TIME SLOT */
-    while((((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) - TIME_SLOT_IDX) < ANCHOR_COUNT);
 
     /* Start transmission, indicating that a response is expected so that reception is enabled automatically after the frame is sent and the delay
      * set by dwt_setrxaftertxdelay() has elapsed. */

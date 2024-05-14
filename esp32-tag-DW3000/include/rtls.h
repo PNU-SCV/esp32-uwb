@@ -24,7 +24,8 @@
 #define ANCHOR_COUNT 2
 
 // TODO: Change this value to the desired time slot index
-#define TIME_SLOT_IDX 0
+#define TIME_SLOT_IDX_0 0
+#define TIME_SLOT_IDX_1 1
 
 void RTLS_Task(void *parameter);
 
