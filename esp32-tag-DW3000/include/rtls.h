@@ -19,8 +19,9 @@
 #define RESP_MSG_SIZE 20
 
 #define TIME_SLOT_SEQ_LENTH 250
-#define TIME_SLOT_LENGTH 30
-#define TIME_SLOT_COUNT 8
+#define TIME_SLOT_LENGTH 60
+#define TIME_SLOT_COUNT 4
+#define ANCHOR_COUNT 2
 
 // TODO: Change this value to the desired time slot index
 #define TIME_SLOT_IDX 0

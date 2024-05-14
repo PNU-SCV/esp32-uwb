@@ -70,33 +70,33 @@ void setup()
 
   /***************** TIME Sync Begin ******************/
     // Connect to Wi-Fi
-    WiFi.softAP(ssid, password);
-    while(WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.println("Connecting to WiFi..");
-    }
-    Serial.println("WiFi connected");
+    // WiFi.softAP(ssid, password);
+    // while(WiFi.status() != WL_CONNECTED)
+    // {
+    //     delay(500);
+    //     Serial.println("Connecting to WiFi..");
+    // }
+    // Serial.println("WiFi connected");
 
-    // Start NTP
-    configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
+    // // Start NTP
+    // configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
 
 
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-    localtime_r(&now, &timeinfo);
+    // time_t now;
+    // struct tm timeinfo;
+    // time(&now);
+    // localtime_r(&now, &timeinfo);
 
-    uint32_t lastSecond = timeinfo.tm_sec;
+    // uint32_t lastSecond = timeinfo.tm_sec;
     
-    while(timeinfo.tm_sec == lastSecond)
-    {
-        delay(1);
-        time(&now);
-        localtime_r(&now, &timeinfo);
-    }
+    // while(timeinfo.tm_sec == lastSecond)
+    // {
+    //     delay(1);
+    //     time(&now);
+    //     localtime_r(&now, &timeinfo);
+    // }
 
-    lastSyncedTime = millis();
+    // lastSyncedTime = millis();
 
 
     /***************** TIME Sync End ******************/
@@ -202,8 +202,8 @@ void loop()
           /* If dwt_starttx() returns an error, abandon this ranging exchange and proceed to the next one. See NOTE 10 below. */
           if (ret == DWT_SUCCESS)
           {
-            /* Polling for TDMA TIME SLOT */
-            while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) % 4 != TIME_SLOT_IDX);
+            // /* Polling for TDMA TIME SLOT */
+            // while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) % 4 != TIME_SLOT_IDX);
 
             /* Poll DW IC until TX frame sent event set. See NOTE 6 below. */
             while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS_BIT_MASK))

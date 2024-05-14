@@ -55,7 +55,7 @@ void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_siz
 
 
     /* Polling for TDMA TIME SLOT */
-    while((((((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) + 8) % 11) - 8) != TIME_SLOT_IDX);
+    while((((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) - TIME_SLOT_IDX) < ANCHOR_COUNT);
 
     /* Start transmission, indicating that a response is expected so that reception is enabled automatically after the frame is sent and the delay
      * set by dwt_setrxaftertxdelay() has elapsed. */
