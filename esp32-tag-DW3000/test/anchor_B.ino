@@ -18,18 +18,13 @@ extern SPISettings _fastSPI;
 #define RESP_MSG_TS_LEN 4
 #define POLL_RX_TO_RESP_TX_DLY_UUS 450
 
-#define TIME_SLOT_SEQ_LENTH 250
+#define FRAME_CYCLE_TIME 250
 #define TIME_SLOT_LENGTH 60
 #define TIME_SLOT_COUNT 4
 #define ANCHOR_COUNT 2
 
 // TODO: Change this value to the desired time slot index
-#define TIME_SLOT_IDX 1
-
-const char *ssid = "ESP32-Access-Point";
-const char *password = "123456789";
-const long gmtOffset_sec = 0;
-const int daylightOffset_sec = 0;
+#define TIME_SLOT_IDX 2
 
 uint32_t lastSyncedTime = 0;
 
@@ -50,6 +45,8 @@ static dwt_config_t config = {
     DWT_PDOA_M0       /* PDOA mode off */
 };
 
+static uint8_t rx_time_sync_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'S', 'Y', 'N', 0xE0, 0, 0};
+
 static uint8_t rx_poll_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'B', 'T', 'A', 0xE0, 0, 0};
 static uint8_t tx_resp_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'A', 'B', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static uint8_t frame_seq_nb = 0;
@@ -68,39 +65,6 @@ uint32_t getCurrentTime(void)
 void setup()
 {
   UART_init();
-
-  /***************** TIME Sync Begin ******************/
-    // Connect to Wi-Fi
-    WiFi.softAP(ssid, password);
-    while(WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.println("Connecting to WiFi..");
-    }
-    Serial.println("WiFi connected");
-
-    // Start NTP
-    configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
-
-
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-    localtime_r(&now, &timeinfo);
-
-    uint32_t lastSecond = timeinfo.tm_sec;
-    
-    while(timeinfo.tm_sec == lastSecond)
-    {
-        delay(1);
-        time(&now);
-        localtime_r(&now, &timeinfo);
-    }
-
-    lastSyncedTime = millis();
-
-
-    /***************** TIME Sync End ******************/
 
   _fastSPI = SPISettings(16000000L, MSBFIRST, SPI_MODE0);
 
@@ -147,12 +111,55 @@ void setup()
 
   Serial.println("Range TX");
   Serial.println("Setup over........");
+
+  /***************** TIME Sync Begin ******************/
+
+  while(lastSyncedTime == 0) {
+    // Waiting for time sync message, without response
+    dwt_rxenable(DWT_START_RX_IMMEDIATE);
+
+    while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR)))
+    {
+    };
+
+    if (status_reg & SYS_STATUS_RXFCG_BIT_MASK)
+    {
+      uint32_t frame_len;
+
+      /* Clear good RX frame event in the DW IC status register. */
+      dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG_BIT_MASK);
+
+      /* A frame has been received, read it into the local buffer. */
+      frame_len = dwt_read32bitreg(RX_FINFO_ID) & RXFLEN_MASK;
+      if (frame_len <= sizeof(rx_buffer))
+      {
+        dwt_readrxdata(rx_buffer, frame_len, 0);
+
+        /* Check that the frame is a poll sent by "SS TWR initiator" example.
+          * As the sequence number field of the frame is not relevant, it is cleared to simplify the validation of the frame. */
+        rx_buffer[ALL_MSG_SN_IDX] = 0;
+        if (memcmp(rx_buffer, rx_time_sync_msg, ALL_MSG_COMMON_LEN) == 0)
+        {
+          lastSyncedTime = millis();
+          lastSyncedTime = lastSyncedTime > 1 ? lastSyncedTime - 1 : 0;
+        }
+      }
+
+      /* Clear RX error events in the DW IC status register. */
+      dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_ERR);
+    }
+  }   
+
+  /***************** TIME Sync End ******************/
 }
 
 void loop()
 {
     /* Polling for TDMA TIME SLOT */
-    while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) % ANCHOR_COUNT != TIME_SLOT_IDX);
+    // while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) % ANCHOR_COUNT != TIME_SLOT_IDX);
+
+    /* Delay for time slot, ignoring all recieved packets */
+    vTaskDelay(pdMS_TO_TICKS((FRAME_CYCLE_TIME + TIME_SLOT_IDX * TIME_SLOT_LENGTH - (getCurrentTime() % FRAME_CYCLE_TIME)) % FRAME_CYCLE_TIME));
 
   /* Activate reception immediately. */
     dwt_rxenable(DWT_START_RX_IMMEDIATE);

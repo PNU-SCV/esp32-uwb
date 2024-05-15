@@ -4,11 +4,6 @@
 #include "dw3000.h"
 #include "rtls.h"
 
-const char *ssid = "ESP32-Access-Point";
-const char *password = "123456789";
-const long gmtOffset_sec = 0;
-const int daylightOffset_sec = 0;
-
 extern uint32_t lastSyncedTime;
 
 /* Default communication configuration. We use default non-STS DW mode. */
@@ -34,39 +29,6 @@ extern dwt_txconfig_t txconfig_options;
 void setup()
 {
     Serial.begin(115200);
-
-    /***************** TIME Sync Begin ******************/
-    // Connect to Wi-Fi
-    WiFi.softAP(ssid, password);
-    while(WiFi.status() != WL_CONNECTED)
-    {
-        delay(500);
-        Serial.println("Connecting to WiFi..");
-    }
-    Serial.println("WiFi connected");
-
-    // Start NTP
-    configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
-
-
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-    localtime_r(&now, &timeinfo);
-
-    uint32_t lastSecond = timeinfo.tm_sec;
-    
-    while(timeinfo.tm_sec == lastSecond)
-    {
-        delay(1);
-        time(&now);
-        localtime_r(&now, &timeinfo);
-    }
-
-    lastSyncedTime = millis();
-
-
-    /***************** TIME Sync End ******************/
 
     /***************** RTLS Setup Begin *****************/
     spiBegin(PIN_IRQ, PIN_RST);

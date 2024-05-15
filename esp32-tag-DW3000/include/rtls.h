@@ -18,14 +18,27 @@
 #define POLL_MSG_SIZE 12
 #define RESP_MSG_SIZE 20
 
+#define FRAME_CYCLE_TIME 250
 #define TIME_SLOT_SEQ_LENTH 250
-#define TIME_SLOT_LENGTH 60
-#define TIME_SLOT_COUNT 4
-#define ANCHOR_COUNT 2
+#define TIME_SLOT_LENGTH 50
+#define TIME_SLOT_COUNT 5
 
 // TODO: Change this value to the desired time slot index
-#define TIME_SLOT_IDX_0 0
-#define TIME_SLOT_IDX_1 1
+#define TIME_SLOT_IDX_0 1
+#define TIME_SLOT_IDX_1 2
+
+#define TIME_SYNC_IDX   0
+
+typedef struct {
+    float x;
+    float z;
+} Point2D;
+
+typedef struct {
+    float x;
+    float y;
+    float z;
+} Point3D;
 
 void RTLS_Task(void *parameter);
 
