@@ -18,16 +18,16 @@
 #define POLL_MSG_SIZE 12
 #define RESP_MSG_SIZE 20
 
-#define FRAME_CYCLE_TIME 250
-#define TIME_SLOT_SEQ_LENTH 250
-#define TIME_SLOT_LENGTH 50
+#define DIST_UPDATE_RATE 0.5
+
+#define FRAME_CYCLE_TIME 500
+#define TIME_SLOT_LENGTH 100
 #define TIME_SLOT_COUNT 5
 
 // TODO: Change this value to the desired time slot index
 #define TIME_SLOT_IDX_0 1
 #define TIME_SLOT_IDX_1 2
 
-#define TIME_SYNC_IDX   0
 
 typedef struct {
     float x;
