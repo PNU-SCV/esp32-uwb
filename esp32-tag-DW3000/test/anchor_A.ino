@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <WiFi.h>
 #include "dw3000.h"
 #include "SPI.h"
 
@@ -16,17 +15,11 @@ extern SPISettings _fastSPI;
 #define RESP_MSG_POLL_RX_TS_IDX 10
 #define RESP_MSG_RESP_TX_TS_IDX 14
 #define RESP_MSG_TS_LEN 4
-#define POLL_RX_TO_RESP_TX_DLY_UUS 450
+#define POLL_RX_TO_RESP_TX_DLY_UUS 640 // Tag SIde Tx_Rx_DLY + Resp_Rx_TIMEOUT
 
-#define FRAME_CYCLE_TIME 250
-#define TIME_SLOT_LENGTH 60
-#define TIME_SLOT_COUNT 4
-#define ANCHOR_COUNT 2
-
-// TODO: Change this value to the desired time slot index
-#define TIME_SLOT_IDX 1
-
-uint32_t lastSyncedTime = 0;
+#define FRAME_CYCLE_TIME 500
+#define TIME_SLOT_LENGTH 100
+#define TIME_SLOT_COUNT 1
 
 /* Default communication configuration. We use default non-STS DW mode. */
 static dwt_config_t config = {
@@ -47,8 +40,8 @@ static dwt_config_t config = {
 
 static uint8_t rx_time_sync_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'S', 'Y', 'N', 0xE0, 0, 0};
 
-static uint8_t rx_poll_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'A', 'A', 'T', 'A', 0xE0, 0, 0};
-static uint8_t tx_resp_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'A', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static uint8_t rx_poll_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'A', 'T', 'A', 0xE0, 0, 0};
+static uint8_t tx_resp_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static uint8_t frame_seq_nb = 0;
 static uint8_t rx_buffer[20];
 static uint32_t status_reg = 0;
@@ -56,11 +49,6 @@ static uint64_t poll_rx_ts;
 static uint64_t resp_tx_ts;
 
 extern dwt_txconfig_t txconfig_options;
-
-uint32_t getCurrentTime(void)
-{
-    return millis() - lastSyncedTime;
-}
 
 void setup()
 {
@@ -111,46 +99,6 @@ void setup()
 
   Serial.println("Range TX");
   Serial.println("Setup over........");
-
-  /***************** TIME Sync Begin ******************/
-
-  while(lastSyncedTime == 0) {
-    // Waiting for time sync message, without response
-    dwt_rxenable(DWT_START_RX_IMMEDIATE);
-
-    while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR)))
-    {
-    };
-
-    if (status_reg & SYS_STATUS_RXFCG_BIT_MASK)
-    {
-      uint32_t frame_len;
-
-      /* Clear good RX frame event in the DW IC status register. */
-      dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG_BIT_MASK);
-
-      /* A frame has been received, read it into the local buffer. */
-      frame_len = dwt_read32bitreg(RX_FINFO_ID) & RXFLEN_MASK;
-      if (frame_len <= sizeof(rx_buffer))
-      {
-        dwt_readrxdata(rx_buffer, frame_len, 0);
-
-        /* Check that the frame is a poll sent by "SS TWR initiator" example.
-          * As the sequence number field of the frame is not relevant, it is cleared to simplify the validation of the frame. */
-        rx_buffer[ALL_MSG_SN_IDX] = 0;
-        if (memcmp(rx_buffer, rx_time_sync_msg, ALL_MSG_COMMON_LEN) == 0)
-        {
-          lastSyncedTime = millis();
-          lastSyncedTime = lastSyncedTime > 1 ? lastSyncedTime - 1 : 0;
-        }
-      }
-
-      /* Clear RX error events in the DW IC status register. */
-      dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_ERR);
-    }
-  }   
-
-  /***************** TIME Sync End ******************/
 }
 
 void loop()
@@ -161,15 +109,13 @@ void loop()
   // Loop End_time - Start_time 을 비교하여 Time Slot 동기화
 
   /* Delay for time slot, ignoring all recieved packets */
-  vTaskDelay(pdMS_TO_TICKS((FRAME_CYCLE_TIME + TIME_SLOT_IDX * TIME_SLOT_LENGTH - (getCurrentTime() % FRAME_CYCLE_TIME)) % FRAME_CYCLE_TIME));
+  // vTaskDelay(pdMS_TO_TICKS((FRAME_CYCLE_TIME + TIME_SLOT_IDX * TIME_SLOT_LENGTH - (getCurrentTime() % FRAME_CYCLE_TIME)) % FRAME_CYCLE_TIME));
 
   /* Activate reception immediately. */
   dwt_rxenable(DWT_START_RX_IMMEDIATE);
 
   /* Poll for reception of a frame or error/timeout. See NOTE 6 below. */
-  while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR)))
-  {
-  };
+  while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_ERR)));
 
   if (status_reg & SYS_STATUS_RXFCG_BIT_MASK)
   {
