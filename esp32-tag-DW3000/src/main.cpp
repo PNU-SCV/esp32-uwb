@@ -3,6 +3,7 @@
 #include <time.h>
 #include "dw3000.h"
 #include "rtls.h"
+#include "rasp.h"
 
 extern uint32_t lastSyncedTime;
 
@@ -84,8 +85,26 @@ void setup()
 
     /***************** RTLS Setup End *****************/
 
+
+    /***************** Rasp Setup Begin *****************/
+
+    // hwSerial.begin(RASP_UART_BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
+
+    /***************** Rasp Setup End *****************/
+
+    xthal_set_intset(1);
+
+
     /* Create FreeRTOS Tasks Begin */
-    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 4096, NULL, 1, NULL, 1);
+    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 65536, NULL, 10, NULL, 1);
+
+    /* Create Rasp Task Begin */
+
+    // xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 2048, NULL, 1, &recvTaskHandle, 1);
+    
+    // xTaskCreatePinnedToCore(raspSendTask, "Send Task", 2048, NULL, 1, &sendTaskHandle, 0);
+
+    /* Create Rasp Task End */
 }
 
 void loop()
