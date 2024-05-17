@@ -1,10 +1,11 @@
 #include <Arduino.h>
+#include <algorithm>
 #include "dw3000.h"
 #include "rtls.h"
 
-const Point3D anchor_A = {0, 2, 0}, anchor_B = {0, 2, 5};
+const Point3D anchor_A = {1.5, 0, 0}, anchor_B = {3.0, 0, 0};
 
-Point2D tag_position = {0, 0};
+Point2D tag_position = {0.0, 0.0};
 
 uint32_t lastSyncedTime = 0;
 
@@ -31,7 +32,7 @@ void calculate_Distance(uint8_t* buffer, double *distance);
 
 void broadcast_Time_Sync_Msg(uint8_t *sync_msg, uint8_t sync_msg_size);
 
-void calculate_Position(void);
+void calculate_Position(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2);
 
 void RTLS_Task(void *parameter)
 {
@@ -57,7 +58,7 @@ void RTLS_Task(void *parameter)
         Serial.println(distance_B);
 
         /* Calulate current position rest of time slots (and, post call end of the function)*/
-        calculate_Position();
+        calculate_Position(anchor_A, anchor_B, (float)distance_A, (float)distance_B);
 
         vTaskDelay(pdMS_TO_TICKS(300));
     }
@@ -146,33 +147,34 @@ void calculate_Distance(uint8_t* buffer, double *distance)
     
 }
 
-void calculate_Position(void) {
-    /* 중점 좌표 계산 */
-    float xM = (anchor_A.x + anchor_B.y) / 2;
-    float yM = (anchor_A.y + anchor_B.y) / 2;
-    float zM = (anchor_A.z + anchor_B.z) / 2;
+void calculate_Position(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2) {
+    float anchor_x_diff;
+    float dx, dz;
+    float x, z;
 
-    /* 각 앵커와 중점 사이의 거리 */
-    float L = sqrt(pow(anchor_A.x - xM, 2) + pow(anchor_A.y - yM, 2) + pow(anchor_A.z - zM, 2));
+    if(anchor_1.x > anchor_2.x) {
+        Point3D temp = anchor_1;
+        anchor_1 = anchor_2;
+        anchor_2 = temp;
+        
+        std::swap(distance_1, distance_2);
+    }
 
-    /* dA^2 - dB^2 + L^2 계산 */
-    float C = pow(distance_A, 2) - pow(distance_B, 2) + pow(L, 2) * 4;
+    anchor_x_diff = anchor_2.x - anchor_1.x;
 
-    /* y-좌표 계산 */
-    float y = (C / (2 * (anchor_B.y - anchor_A.y))) - yM;
-    float xPart = pow(distance_A, 2) - pow(y + yM - anchor_A.y, 2);
-    float zPart = pow(distance_A, 2) - pow(y + yM - anchor_A.y, 2) - pow(xM - anchor_A.x, 2);
+    dx = (pow(anchor_x_diff, 2.0) + pow(distance_1, 2.0) - pow(distance_2, 2.0)) / (2.0 * anchor_x_diff);
 
-    /* x-좌표와 z-좌표 계산 */
-    float x = sqrt(xPart) + xM;
-    float z = sqrt(zPart) + zM;
+    if(distance_1 < dx) return;
+
+    dz = pow(pow(distance_1, 2.0) - pow(dx, 2.0), 0.5);
+
+    x = anchor_1.x + dx;
+    z = anchor_1.z + dz;
 
     tag_position = {x, z};
 
     Serial.print("Tag Position: x = ");
     Serial.print(x, 2);
-    Serial.print(", y = ");
-    Serial.print(y, 2);
     Serial.print(", z = ");
     Serial.println(z, 2);
 }
