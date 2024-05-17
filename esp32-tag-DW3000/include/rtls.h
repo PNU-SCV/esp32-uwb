@@ -6,8 +6,9 @@
 #define PIN_SS 4
 
 #define RNG_DELAY_MS 1000
-#define TX_ANT_DLY 16385
-#define RX_ANT_DLY 16385
+/* No obstacle : 16385, PC: 16372 */
+#define TX_ANT_DLY 16372// 16385
+#define RX_ANT_DLY 16372 // 16385
 #define ALL_MSG_COMMON_LEN 10
 #define ALL_MSG_SN_IDX 2
 #define RESP_MSG_POLL_RX_TS_IDX 10
