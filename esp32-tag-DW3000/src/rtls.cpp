@@ -1,32 +1,48 @@
 #include <Arduino.h>
 #include <algorithm>
+#include <queue>
+#include <vector>
 #include "dw3000.h"
 #include "rtls.h"
 
-const Point3D anchor_A = {1.5, 0, 0}, anchor_B = {3.0, 0, 0};
-
-Point2D tag_position = {0.0, 0.0};
-
-uint32_t lastSyncedTime = 0;
-
 static uint8_t tx_time_sync_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'S', 'Y', 'N', 0xE0, 0, 0};
+
+uint32_t last_synced_time = 0;
+
+                          /* x,   y,   z */
+const Point3D anchor_A = { 1.5,   0,   0};
+const Point3D anchor_B = { 3.0,   0,   0};
 
 static uint8_t tx_poll_msg_A[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'A', 'T', 'A', 0xE0, 0, 0};
 static uint8_t tx_poll_msg_B[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'B', 'T', 'A', 0xE0, 0, 0};
+
 static uint8_t rx_resp_msg_A[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static uint8_t rx_resp_msg_B[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'B', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
 static uint8_t frame_seq_nb = 0;
 static uint8_t rx_buffer[20];
 static uint32_t status_reg = 0;
 static double tof;
 static double distance_A, distance_B;
 
+static double INF_distance = 1024.0;
+
+static TWR_t twr[] = {  
+                        {tx_poll_msg_A, rx_resp_msg_A, &distance_A, &anchor_A},
+                        {tx_poll_msg_B, rx_resp_msg_B, &distance_B, &anchor_B},
+
+                        /* For INF */
+                        {NULL         , NULL         , &INF_distance, NULL}
+};
+
+Point2D tag_position = {0.0, 0.0};
+
 uint32_t getCurrentTime(void)
 {
-    return millis() - lastSyncedTime;
+    return millis() - last_synced_time;
 }
 
-void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance);
+bool poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance);
 
 void calculate_Distance(uint8_t* buffer, double *distance);
 
@@ -36,37 +52,70 @@ void calculate_Position(Point3D anchor_1, Point3D anchor_2, float distance_1, fl
 
 void RTLS_Task(void *parameter)
 {
+    int min_1_idx, min_2_idx;
+
     Serial.println("Range RX");
     Serial.println("Setup over........");
 
     while (1)
     {
         /* Broadcast time sync message */
-        // broadcast_Time_Sync_Msg(tx_time_sync_msg, sizeof(tx_time_sync_msg));
-        // Serial.println("Time Synced!");
+        broadcast_Time_Sync_Msg(tx_time_sync_msg, sizeof(tx_time_sync_msg));
+        Serial.println("Time Synced!");
 
-        /* Execute a ranging exchange.
-            * The device with the tag address will send a poll message to the device with the anchor address.
-            * The anchor will receive the poll message and send a response message to the tag.
-            * The tag will receive the response message and calculate the distance between the two devices. */
-        poll_And_Recieve(tx_poll_msg_A, rx_resp_msg_A, POLL_MSG_SIZE, RESP_MSG_SIZE, &distance_A);
-        Serial.print("Distance A: ");
-        Serial.println(distance_A);
+        vTaskDelay(pdMS_TO_TICKS(2));
 
-        poll_And_Recieve(tx_poll_msg_B, rx_resp_msg_B, POLL_MSG_SIZE, RESP_MSG_SIZE, &distance_B);
-        Serial.print("Distance B: ");
-        Serial.println(distance_B);
+        min_1_idx = min_2_idx = ANCHOR_COUNT;
 
-        /* Calulate current position rest of time slots (and, post call end of the function)*/
-        calculate_Position(anchor_A, anchor_B, (float)distance_A, (float)distance_B);
+        // /* Execute a ranging exchange.
+        //     * The device with the tag address will send a poll message to the device with the anchor address.
+        //     * The anchor will receive the poll message and send a response message to the tag.
+        //     * The tag will receive the response message and calculate the distance between the two devices. */
+        // poll_And_Recieve(tx_poll_msg_A, rx_resp_msg_A, sizeof(tx_poll_msg_A), sizeof(rx_resp_msg_A), &distance_A);
+        // Serial.print("Distance A: ");
+        // Serial.println(distance_A);
 
-        vTaskDelay(pdMS_TO_TICKS(300));
+        // poll_And_Recieve(tx_poll_msg_B, rx_resp_msg_B, sizeof(tx_poll_msg_A), sizeof(rx_resp_msg_B), &distance_B);
+        // Serial.print("Distance B: ");
+        // Serial.println(distance_B);
+
+        for(int i = 0; i < ANCHOR_COUNT; ++i) {
+            bool is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+
+            if(is_updated == false) continue;
+
+            double min_1_dist = *twr[min_1_idx].distance, min_2_dist = *twr[min_2_idx].distance;
+            double cur_dist = *twr[i].distance;
+
+            if(cur_dist < min_2_dist) 
+            {
+                min_2_dist = cur_dist;
+                min_2_idx = i;
+            }
+
+            if(min_2_dist < min_1_dist)
+            {
+                std::swap(min_1_idx, min_2_idx);
+            }
+        }
+
+        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) {
+            Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
+            float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
+
+            /* Calulate current position rest of time slots (and, post call end of the function)*/
+            calculate_Position(anchor_1, anchor_2, dist_1, dist_2);
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME));
     }
 }
 
 
-void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance)
+bool poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance)
 {
+    bool is_updated = false;
+
     /* Polling for TDMA TIME SLOT */
     //while(((getCurrentTime() % TIME_SLOT_SEQ_LENTH) / TIME_SLOT_LENGTH) != time_slot_idx);
 
@@ -108,13 +157,15 @@ void poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_siz
             if (memcmp(rx_buffer, resp_msg, ALL_MSG_COMMON_LEN) == 0)
             {
                 calculate_Distance(rx_buffer, distance);
+                is_updated = true;
             }
         }
     } else {
         /* Clear RX error/timeout events in the DW IC status register. */
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
     }
-            
+
+    return is_updated;           
 }
 
 void calculate_Distance(uint8_t* buffer, double *distance)
@@ -142,8 +193,11 @@ void calculate_Distance(uint8_t* buffer, double *distance)
     double dist_diff = tof * SPEED_OF_LIGHT - *distance;
     
     // 거리 계산 (TOF × 빛의 속도)
-    // Floating Average
-    *distance = *distance + dist_diff * DIST_UPDATE_RATE;
+    /* Moving Average */ 
+    // *distance = *distance + dist_diff * DIST_UPDATE_RATE;'
+
+    /* Moving Average with log */
+    *distance = *distance + (dist_diff < 0 ? -1 : 1) * log10(abs(dist_diff) + 1);
     
 }
 
@@ -200,7 +254,7 @@ void broadcast_Time_Sync_Msg(uint8_t *sync_msg, uint8_t sync_msg_size)
     {
     };
 
-    lastSyncedTime = millis();
+    last_synced_time = millis();
     
     /* Increment frame sequence number after transmission of the poll message (modulo 256). */
     frame_seq_nb++;
