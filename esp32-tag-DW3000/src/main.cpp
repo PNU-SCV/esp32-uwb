@@ -5,7 +5,7 @@
 #include "rtls.h"
 #include "rasp.h"
 
-extern uint32_t lastSyncedTime;
+extern uint32_t last_synced_time;
 
 /* Default communication configuration. We use default non-STS DW mode. */
 static dwt_config_t config = {
@@ -26,6 +26,10 @@ static dwt_config_t config = {
 
 extern dwt_txconfig_t txconfig_options;
 
+extern HardwareSerial hwSerial;
+
+TaskHandle_t recvTaskHandle = NULL;
+TaskHandle_t sendTaskHandle = NULL;
 
 void setup()
 {
@@ -88,7 +92,7 @@ void setup()
 
     /***************** Rasp Setup Begin *****************/
 
-    // hwSerial.begin(RASP_UART_BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
+    hwSerial.begin(RASP_UART_BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
 
     /***************** Rasp Setup End *****************/
 
@@ -96,13 +100,13 @@ void setup()
 
 
     /* Create FreeRTOS Tasks Begin */
-    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 65536, NULL, 10, NULL, 1);
+    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 10, NULL, 1);
 
     /* Create Rasp Task Begin */
 
-    // xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 2048, NULL, 1, &recvTaskHandle, 1);
+    xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 16, NULL, 1, &recvTaskHandle, 1);
     
-    // xTaskCreatePinnedToCore(raspSendTask, "Send Task", 2048, NULL, 1, &sendTaskHandle, 0);
+    xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 16, NULL, 1, &sendTaskHandle, 0);
 
     /* Create Rasp Task End */
 }
