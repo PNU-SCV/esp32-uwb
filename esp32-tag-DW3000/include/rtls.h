@@ -16,19 +16,17 @@
 #define RESP_MSG_TS_LEN 4
 #define POLL_TX_TO_RESP_RX_DLY_UUS 240
 #define RESP_RX_TIMEOUT_UUS 400
-#define POLL_MSG_SIZE 12
-#define RESP_MSG_SIZE 20
+#define POLL_MSG_SIZE (uint8_t) 12
+#define RESP_MSG_SIZE (uint8_t) 20
 
 #define DIST_UPDATE_RATE 0.5
 
 #define FRAME_CYCLE_TIME 500
 #define TIME_SLOT_LENGTH 100
-#define TIME_SLOT_COUNT 5
+#define TIME_SLOT_COUNT 2
+#define TIME_SLOT_INX 0
 
-// TODO: Change this value to the desired time slot index
-#define TIME_SLOT_IDX_0 1
-#define TIME_SLOT_IDX_1 2
-
+#define ANCHOR_COUNT 2
 
 typedef struct {
     float x;
@@ -40,6 +38,13 @@ typedef struct {
     float y;
     float z;
 } Point3D;
+
+typedef struct {
+    uint8_t *tx_poll_msg;
+    uint8_t *rx_resp_msg;
+    double *distance;
+    const Point3D *anchor_loc;
+} TWR_t;
 
 void RTLS_Task(void *parameter);
 
