@@ -4,6 +4,7 @@
 #include "dw3000.h"
 #include "rtls.h"
 #include "rasp.h"
+#include "stm32.h"
 
 extern uint32_t last_synced_time;
 
@@ -26,10 +27,16 @@ static dwt_config_t config = {
 
 extern dwt_txconfig_t txconfig_options;
 
-extern HardwareSerial hwSerial;
+extern HardwareSerial RaspHwSerial;
+extern HardwareSerial Stm32HwSerial;
 
-TaskHandle_t recvTaskHandle = NULL;
-TaskHandle_t sendTaskHandle = NULL;
+TaskHandle_t RTLS_task_handle = NULL;
+
+TaskHandle_t rasp_recv_task_handle = NULL;
+TaskHandle_t rasp_send_task_handle = NULL;
+
+TaskHandle_t stm32_recv_task_handle = NULL;
+TaskHandle_t stm32_send_task_handle = NULL;
 
 void setup()
 {
@@ -92,23 +99,40 @@ void setup()
 
     /***************** Rasp Setup Begin *****************/
 
-    hwSerial.begin(RASP_UART_BAUD, SERIAL_8N1, RX_PIN, TX_PIN);
+    RaspHwSerial.begin(RASP_UART_BAUD, SERIAL_8N1, RASP_RX_PIN, RASP_TX_PIN);
 
     /***************** Rasp Setup End *****************/
 
-    xthal_set_intset(1);
+    /***************** STM32 Setup Begin *****************/
+
+    Stm32HwSerial.begin(STM32_UART_BAUD, SERIAL_8N1, STM32_RX_PIN, STM32_TX_PIN);
+
+    /***************** STM32 Setup End *****************/
+
+    //xthal_set_intset(1);
+
+    // Core 1: RTLS Task -> Core 1: Rasp Recv Task -> Core 1: STM32 Send Task
+    // Core 0: Rasp Send Task -> Core 0: STM32 Recv Task
 
 
     /* Create FreeRTOS Tasks Begin */
-    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 10, NULL, 1);
+    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 10, &RTLS_task_handle, 1);
 
     /* Create Rasp Task Begin */
 
-    xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 16, NULL, 1, &recvTaskHandle, 1);
+    xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 16, NULL, 1, &rasp_recv_task_handle, 1);
     
-    xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 16, NULL, 1, &sendTaskHandle, 0);
+    xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 16, NULL, 1, &rasp_send_task_handle, 0);
 
     /* Create Rasp Task End */
+
+    /* Create STM32 Task Begin */
+
+    xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 16, NULL, 1, &stm32_recv_task_handle, 0);
+
+    xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 16, NULL, 1, &stm32_send_task_handle, 1);
+
+    /* Create STM32 Task End */
 }
 
 void loop()

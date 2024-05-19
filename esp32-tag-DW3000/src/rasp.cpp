@@ -3,33 +3,64 @@
 #include "freertos/FreeRTOS.h"
 #include "rasp.h"
 
-HardwareSerial hwSerial(1);
+HardwareSerial RaspHwSerial(1);
 
 volatile RaspRecvData rasp_recieve_data;
 volatile RaspSendData rasp_send_data;
 
-// // 수신 태스크
-void raspRecvTask(void *parameter) {
-  while (true) {
-    if (hwSerial.available() >= sizeof(RaspRecvData)) {
-      hwSerial.readBytes((char*)&rasp_recieve_data, sizeof(RaspRecvData));
+extern TaskHandle_t stm32_send_task_handle;
+extern TaskHandle_t stm32_recv_task_handle;
 
-      // 여기에서 수신 데이터 처리
-      
+extern Point2D tag_position;
+extern Point2D target_loc;
+extern float tag_angle;
+
+uint8_t rasp_cmd = 0;
+
+uint8_t rasp_stat = 0;
+
+// // 수신 태스크
+void raspRecvTask(void *parameter) 
+{
+  while (true) 
+  {
+    // Pending for RTLS Task's notification
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    if (RaspHwSerial.available() >= sizeof(RaspRecvData)) 
+    {
+      RaspHwSerial.readBytes((char*)&rasp_recieve_data, sizeof(RaspRecvData));
+
+      Serial.println("Data received from Raspberry Pi");
+
+      /* Setting target_angle, target_loc */
+      target_loc = {rasp_recieve_data.dest_x, rasp_recieve_data.dest_z};
+      tag_angle = rasp_recieve_data.angle;
+      rasp_cmd = rasp_recieve_data.cmd;
     }
-    vTaskDelay(10 / portTICK_PERIOD_MS); // 데이터 폴링 빈도 조절
+    // Posting to STM32 Send Task
+    xTaskNotifyGive(stm32_send_task_handle);
   }
 }
 
 // 송신 태스크
-void raspSendTask(void *parameter) {
-  while (true) {
+void raspSendTask(void *parameter) 
+{
+  while (true) 
+  {
     // Task pending (RTLS_Task에서 이 태스크를 트리거할 때까지 대기)
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
+    rasp_send_data.stat = rasp_stat;
+    rasp_send_data.loc_x = tag_position.x;
+    rasp_send_data.loc_z = tag_position.z;
+
     // 데이터 송신
-    hwSerial.write((const uint8_t*)&rasp_send_data, sizeof(RaspSendData));
+    RaspHwSerial.write((const uint8_t*)&rasp_send_data, sizeof(RaspSendData));
 
     Serial.println("Data sent to Raspberry Pi");
+
+    // Posting to stm32 Recv Task
+    xTaskNotifyGive(stm32_recv_task_handle);
   }
 }

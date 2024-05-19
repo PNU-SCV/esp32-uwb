@@ -1,6 +1,8 @@
 #ifndef __RTLS_H
 #define __RTLS_H
 
+#include "point.h"
+
 #define PIN_RST 27
 #define PIN_IRQ 34
 #define PIN_SS 4
@@ -27,17 +29,6 @@
 #define TIME_SLOT_INX 0
 
 #define ANCHOR_COUNT 2
-
-typedef struct {
-    float x;
-    float z;
-} Point2D;
-
-typedef struct {
-    float x;
-    float y;
-    float z;
-} Point3D;
 
 typedef struct {
     uint8_t *tx_poll_msg;

@@ -5,9 +5,16 @@
 #include "dw3000.h"
 #include "rtls.h"
 
+extern TaskHandle_t rasp_recv_task_handle;
+extern TaskHandle_t rasp_send_task_handle;
+extern TaskHandle_t stm32_send_task_handle;
+extern TaskHandle_t stm32_recv_task_handle;
+
 static uint8_t tx_time_sync_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'S', 'Y', 'N', 0xE0, 0, 0};
 
 uint32_t last_synced_time = 0;
+
+/***************************** Anchor Configuration Begin *****************************/
 
                           /* x,   y,   z */
 const Point3D anchor_A = { 1.5,   0,   0};
@@ -27,6 +34,8 @@ static double distance_A, distance_B;
 
 static double INF_distance = 1024.0;
 
+/***************************** Anchor Configuration End *****************************/
+
 static TWR_t twr[] = {  
                         {tx_poll_msg_A, rx_resp_msg_A, &distance_A, &anchor_A},
                         {tx_poll_msg_B, rx_resp_msg_B, &distance_B, &anchor_B},
@@ -35,7 +44,7 @@ static TWR_t twr[] = {
                         {NULL         , NULL         , &INF_distance, NULL}
 };
 
-Point2D tag_position = {0.0, 0.0};
+extern Point2D tag_position;
 
 uint32_t getCurrentTime(void)
 {
@@ -67,19 +76,8 @@ void RTLS_Task(void *parameter)
 
         min_1_idx = min_2_idx = ANCHOR_COUNT;
 
-        // /* Execute a ranging exchange.
-        //     * The device with the tag address will send a poll message to the device with the anchor address.
-        //     * The anchor will receive the poll message and send a response message to the tag.
-        //     * The tag will receive the response message and calculate the distance between the two devices. */
-        // poll_And_Recieve(tx_poll_msg_A, rx_resp_msg_A, sizeof(tx_poll_msg_A), sizeof(rx_resp_msg_A), &distance_A);
-        // Serial.print("Distance A: ");
-        // Serial.println(distance_A);
-
-        // poll_And_Recieve(tx_poll_msg_B, rx_resp_msg_B, sizeof(tx_poll_msg_A), sizeof(rx_resp_msg_B), &distance_B);
-        // Serial.print("Distance B: ");
-        // Serial.println(distance_B);
-
-        for(int i = 0; i < ANCHOR_COUNT; ++i) {
+        for(int i = 0; i < ANCHOR_COUNT; ++i) 
+        {
             bool is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
 
             if(is_updated == false) continue;
@@ -99,7 +97,8 @@ void RTLS_Task(void *parameter)
             }
         }
 
-        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) {
+        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) 
+        {
             Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
             float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
 
@@ -107,7 +106,13 @@ void RTLS_Task(void *parameter)
             calculate_Position(anchor_1, anchor_2, dist_1, dist_2);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME));
+        // Posting to raspRecvTask
+        xTaskNotifyGive(rasp_recv_task_handle);
+
+        // Pending for stm32SendTask
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME - getCurrentTime()));
     }
 }
 
@@ -259,21 +264,21 @@ void broadcast_Time_Sync_Msg(uint8_t *sync_msg, uint8_t sync_msg_size)
     /* Increment frame sequence number after transmission of the poll message (modulo 256). */
     frame_seq_nb++;
     
-    if (status_reg & SYS_STATUS_RXFCG_BIT_MASK)
-    {
-        uint32_t frame_len;
+    // if (status_reg & SYS_STATUS_RXFCG_BIT_MASK)
+    // {
+    //     uint32_t frame_len;
     
-        /* Clear good RX frame event in the DW IC status register. */
-        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG_BIT_MASK);
+    //     /* Clear good RX frame event in the DW IC status register. */
+    //     dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG_BIT_MASK);
     
-        /* A frame has been received, read it into the local buffer. */
-        frame_len = dwt_read32bitreg(RX_FINFO_ID) & RXFLEN_MASK;
-        if (frame_len <= sizeof(rx_buffer))
-        {
-            dwt_readrxdata(rx_buffer, frame_len, 0);
-        }
-    } else {
-        /* Clear RX error/timeout events in the DW IC status register. */
-        dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
-    }
+    //     /* A frame has been received, read it into the local buffer. */
+    //     frame_len = dwt_read32bitreg(RX_FINFO_ID) & RXFLEN_MASK;
+    //     if (frame_len <= sizeof(rx_buffer))
+    //     {
+    //         dwt_readrxdata(rx_buffer, frame_len, 0);
+    //     }
+    // } else {
+    //     /* Clear RX error/timeout events in the DW IC status register. */
+    //     dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
+    // }
 }
