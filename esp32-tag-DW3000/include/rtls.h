@@ -35,6 +35,15 @@ typedef struct {
     uint8_t *rx_resp_msg;
     double *distance;
     const Point3D *anchor_loc;
+    bool is_updated;
+
+    void operator=(const TWR_t &twr) {
+        tx_poll_msg = twr.tx_poll_msg;
+        rx_resp_msg = twr.rx_resp_msg;
+        distance = twr.distance;
+        anchor_loc = twr.anchor_loc;
+        is_updated = twr.is_updated;
+    }
 } TWR_t;
 
 void RTLS_Task(void *parameter);

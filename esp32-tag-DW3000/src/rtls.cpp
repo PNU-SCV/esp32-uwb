@@ -37,11 +37,11 @@ static double INF_distance = 1024.0;
 /***************************** Anchor Configuration End *****************************/
 
 static TWR_t twr[] = {  
-                        {tx_poll_msg_A, rx_resp_msg_A, &distance_A, &anchor_A},
-                        {tx_poll_msg_B, rx_resp_msg_B, &distance_B, &anchor_B},
+                        {tx_poll_msg_A, rx_resp_msg_A, &distance_A, &anchor_A, false},
+                        {tx_poll_msg_B, rx_resp_msg_B, &distance_B, &anchor_B, false},
 
                         /* For INF */
-                        {NULL         , NULL         , &INF_distance, NULL}
+                        {NULL         , NULL         , &INF_distance, NULL   , false}
 };
 
 extern Point2D tag_position;
@@ -65,6 +65,12 @@ void RTLS_Task(void *parameter)
 
     Serial.println("Range RX");
     Serial.println("Setup over........");
+
+    std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
+        if(a.anchor_loc->z == b.anchor_loc->z) return a.anchor_loc->x < b.anchor_loc->x;
+
+        return a.anchor_loc->z < b.anchor_loc->z;
+    });
 
     while (1)
     {

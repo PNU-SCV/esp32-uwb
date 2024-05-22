@@ -1,3 +1,4 @@
+#include <HardwareSerial.h>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <time.h>
@@ -115,8 +116,11 @@ void setup()
     // Core 0: Rasp Send Task -> Core 0: STM32 Recv Task
 
 
-    /* Create FreeRTOS Tasks Begin */
-    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 10, &RTLS_task_handle, 1);
+    /* Create RTLS Tasks Begin */
+
+    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1);
+
+    /* Create RTLS Tasks End */
 
     /* Create Rasp Task Begin */
 
@@ -128,11 +132,15 @@ void setup()
 
     /* Create STM32 Task Begin */
 
-    xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 16, NULL, 1, &stm32_recv_task_handle, 0);
+    xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 16, NULL, 2, &stm32_recv_task_handle, 0);
 
-    xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 16, NULL, 1, &stm32_send_task_handle, 1);
+    xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 16, NULL, 2, &stm32_send_task_handle, 1);
 
+
+    
     /* Create STM32 Task End */
+
+    vTaskStartScheduler();
 }
 
 void loop()
