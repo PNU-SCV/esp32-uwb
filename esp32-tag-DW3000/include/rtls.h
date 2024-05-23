@@ -1,6 +1,8 @@
 #ifndef __RTLS_H
 #define __RTLS_H
 
+#include <cstdint>
+#include <cstring>
 #include "point.h"
 
 #define PIN_RST 27
@@ -30,21 +32,44 @@
 
 #define ANCHOR_COUNT 2
 
-typedef struct {
+struct TWR_t{
     uint8_t *tx_poll_msg;
     uint8_t *rx_resp_msg;
     double *distance;
     const Point3D *anchor_loc;
     bool is_updated;
 
-    void operator=(const TWR_t &twr) {
-        tx_poll_msg = twr.tx_poll_msg;
-        rx_resp_msg = twr.rx_resp_msg;
-        distance = twr.distance;
-        anchor_loc = twr.anchor_loc;
-        is_updated = twr.is_updated;
+     TWR_t& operator=(const TWR_t& other) {
+        if (this == &other)
+            return *this; 
+
+        if (other.tx_poll_msg) {
+            tx_poll_msg = new uint8_t[sizeof(other.tx_poll_msg)];
+            std::memcpy(tx_poll_msg, other.tx_poll_msg, sizeof(other.tx_poll_msg));
+        } else {
+            tx_poll_msg = nullptr;
+        }
+
+        if (other.rx_resp_msg) {
+            rx_resp_msg = new uint8_t[sizeof(other.rx_resp_msg)];
+            std::memcpy(rx_resp_msg, other.rx_resp_msg, sizeof(other.rx_resp_msg));
+        } else {
+            rx_resp_msg = nullptr;
+        }
+
+        if (other.distance) {
+            distance = new double;
+            *distance = *(other.distance);
+        } else {
+            distance = nullptr;
+        }
+
+        anchor_loc = other.anchor_loc; 
+        is_updated = other.is_updated;
+
+        return *this;
     }
-} TWR_t;
+};
 
 void RTLS_Task(void *parameter);
 
