@@ -110,37 +110,40 @@ void setup()
 
     /***************** STM32 Setup End *****************/
 
-    //xthal_set_intset(1);
+    // xthal_set_intset(1);
 
     // Core 1: RTLS Task -> Core 1: Rasp Recv Task -> Core 1: STM32 Send Task
     // Core 0: Rasp Send Task -> Core 0: STM32 Recv Task
 
 
-    /* Create RTLS Tasks Begin */
+    // Create RTLS Task
+    if (xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
+        Serial.println("Failed to create RTLS Task");
+    }
 
-    xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1);
+    // Create Rasp Tasks
+    if (xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 10, NULL, 1, &rasp_recv_task_handle, 1) != pdPASS) {
+        Serial.println("Failed to create Rasp Recv Task");
+    }
 
-    /* Create RTLS Tasks End */
+    if (xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 10, NULL, 1, &rasp_send_task_handle, 0) != pdPASS) {
+        Serial.println("Failed to create Rasp Send Task");
+    }
 
-    /* Create Rasp Task Begin */
+    // Create STM32 Tasks
+    if (xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 10, NULL, 2, &stm32_recv_task_handle, 0) != pdPASS) {
+        Serial.println("Failed to create STM32 Recv Task");
+    }
 
-    xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 16, NULL, 1, &rasp_recv_task_handle, 1);
-    
-    xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 16, NULL, 1, &rasp_send_task_handle, 0);
-
-    /* Create Rasp Task End */
-
-    /* Create STM32 Task Begin */
-
-    xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 16, NULL, 2, &stm32_recv_task_handle, 0);
-
-    xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 16, NULL, 2, &stm32_send_task_handle, 1);
+    if (xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 10, NULL, 2, &stm32_send_task_handle, 1) != pdPASS) {
+        Serial.println("Failed to create STM32 Send Task");
+    }
 
 
     
     /* Create STM32 Task End */
 
-    vTaskStartScheduler();
+    // vTaskStartScheduler();
 }
 
 void loop()
