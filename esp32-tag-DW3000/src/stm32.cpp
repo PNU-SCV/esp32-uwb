@@ -27,8 +27,7 @@ void stm32RecvTask(void *parameter)
 {
   while (true) 
   {
-    /* Task pending (Rasp Recv 에서 이 태스크를 트리거할 때까지 대기) */
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    Serial.println("stm32RecvTask");
 
     if (Stm32HwSerial.available() >= sizeof(STM32RecvData)) 
     {
@@ -39,6 +38,9 @@ void stm32RecvTask(void *parameter)
     
     /* Posting for Rasp Send Task */
     xTaskNotifyGive(rasp_send_task_handle);
+
+    /* Task pending (Rasp Recv 에서 이 태스크를 트리거할 때까지 대기) */
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
   }
 }
 
@@ -49,6 +51,8 @@ void stm32SendTask(void *parameter)
   {
     /* Task pending (raspRecvTask에서 이 태스크를 트리거할 때까지 대기) */
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    Serial.println("stm32SendTask");
 
     if (tag_position == target_loc || rasp_cmd == CMD_STOP) 
     {
