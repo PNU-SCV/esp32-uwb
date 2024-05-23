@@ -66,17 +66,17 @@ void RTLS_Task(void *parameter)
     Serial.println("Range RX");
     Serial.println("Setup over........");
 
-    std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
-        if(a.anchor_loc->z == b.anchor_loc->z) return a.anchor_loc->x < b.anchor_loc->x;
+    // std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
+    //     if(a.anchor_loc->z == b.anchor_loc->z) return a.anchor_loc->x < b.anchor_loc->x;
 
-        return a.anchor_loc->z < b.anchor_loc->z;
-    });
+    //     return a.anchor_loc->z < b.anchor_loc->z;
+    // });
 
     while (1)
     {
         /* Broadcast time sync message */
-        broadcast_Time_Sync_Msg(tx_time_sync_msg, sizeof(tx_time_sync_msg));
-        Serial.println("Time Synced!");
+        // broadcast_Time_Sync_Msg(tx_time_sync_msg, sizeof(tx_time_sync_msg));
+        // Serial.println("Time Synced!");
 
         vTaskDelay(pdMS_TO_TICKS(2));
 
@@ -85,6 +85,9 @@ void RTLS_Task(void *parameter)
         for(int i = 0; i < ANCHOR_COUNT; ++i) 
         {
             bool is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+            Serial.print(i);
+            Serial.print(": ");
+            Serial.println(*twr[i].distance);
 
             if(is_updated == false) continue;
 
@@ -118,7 +121,7 @@ void RTLS_Task(void *parameter)
         // Pending for stm32SendTask
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME - getCurrentTime()));
+        vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME));
     }
 }
 
@@ -147,7 +150,7 @@ bool poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_siz
     while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)));
     
     /* Increment frame sequence number after transmission of the poll message (modulo 256). */
-    frame_seq_nb++;
+    frame_seq_nb = (frame_seq_nb + 1) % 256;
     
     if (status_reg & SYS_STATUS_RXFCG_BIT_MASK)
     {
@@ -258,17 +261,34 @@ void broadcast_Time_Sync_Msg(uint8_t *sync_msg, uint8_t sync_msg_size)
 
     /* Start transmission, indicating that a response is expected so that reception is enabled automatically after the frame is sent and the delay
      * set by dwt_setrxaftertxdelay() has elapsed. */
-    dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
-    
-    /* We assume that the transmission is achieved correctly, poll for reception of a frame or error/timeout. See NOTE 8 below. */
-    while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)))
-    {
-    };
+    int ret = dwt_starttx(DWT_START_TX_IMMEDIATE);
 
+
+    frame_seq_nb = (frame_seq_nb + 1) % 256;
     last_synced_time = millis();
     
     /* Increment frame sequence number after transmission of the poll message (modulo 256). */
-    frame_seq_nb++;
+    vTaskDelay(pdMS_TO_TICKS(2));
+    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
+
+    // /* If dwt_starttx() returns an error, abandon this ranging exchange and proceed to the next one. See NOTE 10 below. */
+    // if (ret == DWT_SUCCESS)
+    // {
+    //     /* Poll DW IC until TX frame sent event set. See NOTE 6 below. */
+    //     while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS_BIT_MASK))
+    //     {
+    //     };
+
+    //     /* Clear TXFRS event. */
+    //     dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
+
+    //     /* Increment frame sequence number after transmission of the poll message (modulo 256). */
+    //     frame_seq_nb = (frame_seq_nb + 1) % 256;
+    // }
+    // else 
+    // {
+    //     dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_ERR);
+    // }
     
     // if (status_reg & SYS_STATUS_RXFCG_BIT_MASK)
     // {
