@@ -27,6 +27,8 @@ void raspRecvTask(void *parameter)
     // Pending for RTLS Task's notification
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
+    Serial.println("raspRecvTask");
+
     if (RaspHwSerial.available() >= sizeof(RaspRecvData)) 
     {
       RaspHwSerial.readBytes((char*)&rasp_recieve_data, sizeof(RaspRecvData));
@@ -50,6 +52,8 @@ void raspSendTask(void *parameter)
   {
     // Task pending (RTLS_Task에서 이 태스크를 트리거할 때까지 대기)
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    Serial.println("raspSendTask");
 
     rasp_send_data.stat = rasp_stat;
     rasp_send_data.loc_x = tag_position.x;
