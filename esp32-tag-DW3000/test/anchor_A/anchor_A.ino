@@ -133,8 +133,17 @@ void loop()
       /* Check that the frame is a poll sent by "SS TWR initiator" example.
        * As the sequence number field of the frame is not relevant, it is cleared to simplify the validation of the frame. */
       rx_buffer[ALL_MSG_SN_IDX] = 0;
-      if (memcmp(rx_buffer, rx_poll_msg, ALL_MSG_COMMON_LEN) == 0)
+      if (memcmp(rx_buffer, rx_poll_msg, 5) == 0 && rx_buffer[10] == 0xE0) /* (memcmp(rx_buffer, rx_poll_msg, ALL_MSG_COMMON_LEN) == 0) */
       {
+        uint32_t resp_tx_time;
+        int ret;
+
+        tx_resp_msg[5] = rx_buffer[7];
+        tx_resp_msg[6] = rx_buffer[8];
+
+        tx_resp_msg[7] = rx_buffer[5];
+        tx_resp_msg[8] = rx_buffer[6];
+        
         uint32_t resp_tx_time;
         int ret;
 
@@ -170,7 +179,7 @@ void loop()
           dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
 
           /* Increment frame sequence number after transmission of the poll message (modulo 256). */
-          frame_seq_nb++;
+          frame_seq_nb = (frame_seq_nb + 1) % 256;
         }
       }
     }
