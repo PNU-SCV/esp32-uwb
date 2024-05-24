@@ -17,6 +17,9 @@ HardwareSerial Stm32HwSerial(2);
 volatile STM32RecvData stm32_recieve_data;
 volatile STM32SendData stm32_send_data;
 
+extern SemaphoreHandle_t stm32_recv_data_semaphore;
+extern SemaphoreHandle_t rasp_recv_data_semaphore;
+
 Point2D target_loc = {0.0, 0.0};
 Point2D tag_position = {0.0, 0.0};
 float tag_angle = 0.0;
@@ -27,6 +30,11 @@ void stm32RecvTask(void *parameter)
 {
   while (true) 
   {
+    /* Task pending (Rasp Recv 에서 이 태스크를 트리거할 때까지 대기) */
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+
     Serial.println("stm32RecvTask");
 
     if (Stm32HwSerial.available() >= sizeof(STM32RecvData)) 
@@ -35,12 +43,8 @@ void stm32RecvTask(void *parameter)
 
       rasp_stat = stm32_recieve_data.status;
     }
-    
-    /* Posting for Rasp Send Task */
-    xTaskNotifyGive(rasp_send_task_handle);
 
-    /* Task pending (Rasp Recv 에서 이 태스크를 트리거할 때까지 대기) */
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    xSemaphoreGive(stm32_recv_data_semaphore);
   }
 }
 
@@ -52,9 +56,17 @@ void stm32SendTask(void *parameter)
     /* Task pending (raspRecvTask에서 이 태스크를 트리거할 때까지 대기) */
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
+    if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+
+    if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) 
+    {
+      xSemaphoreGive(stm32_recv_data_semaphore);
+      continue;
+    }
+
     Serial.println("stm32SendTask");
 
-    if (tag_position == target_loc || rasp_cmd == CMD_STOP) 
+    if (tag_position == target_loc || rasp_cmd == CMD_STOP || stm32_recieve_data.status == 0x01) 
     {
       stm32_send_data.cmd = CMD_STOP;
     }
@@ -74,8 +86,12 @@ void stm32SendTask(void *parameter)
     /* Send CMD to STM32 */
     Stm32HwSerial.write((const uint8_t*)&stm32_send_data, sizeof(STM32SendData));
 
+    xSemaphoreGive(stm32_recv_data_semaphore);
+
+    xSemaphoreGive(rasp_recv_data_semaphore);
+
     /* Posting to RTLS Task */
-    xTaskNotifyGive(RTLS_task_handle);
+    xTaskNotifyGive(rasp_send_task_handle);
   }
 }
 
