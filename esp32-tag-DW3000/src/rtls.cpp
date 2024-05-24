@@ -66,11 +66,11 @@ void RTLS_Task(void *parameter)
     Serial.println("Range RX");
     Serial.println("Setup over........");
 
-    // std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
-    //     if(a.anchor_loc->z == b.anchor_loc->z) return a.anchor_loc->x < b.anchor_loc->x;
+    std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
+        if(a.anchor_loc->z == b.anchor_loc->z) return a.anchor_loc->x < b.anchor_loc->x;
 
-    //     return a.anchor_loc->z < b.anchor_loc->z;
-    // });
+        return a.anchor_loc->z < b.anchor_loc->z;
+    });
 
     while (1)
     {
@@ -80,31 +80,54 @@ void RTLS_Task(void *parameter)
 
         vTaskDelay(pdMS_TO_TICKS(2));
 
-        min_1_idx = min_2_idx = ANCHOR_COUNT;
-
-        for(int i = 0; i < ANCHOR_COUNT; ++i) 
+        for (int i = 0;  i < ANCHOR_COUNT; ++i) 
         {
-            bool is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+            twr[i].is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
             Serial.print(i);
             Serial.print(": ");
             Serial.println(*twr[i].distance);
+        }
 
-            if(is_updated == false) continue;
+        min_1_idx = min_2_idx = ANCHOR_COUNT;
 
-            double min_1_dist = *twr[min_1_idx].distance, min_2_dist = *twr[min_2_idx].distance;
-            double cur_dist = *twr[i].distance;
+        for(int i = 1; i < ANCHOR_COUNT; i++) 
+        {
+            if(twr[i - 1].is_updated == false || twr[i].is_updated == false || twr[i - 1].anchor_loc->z != twr[i].anchor_loc->z) continue;
 
-            if(cur_dist < min_2_dist) 
+            double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
+            double cur_sum_distance = *twr[i - 1].distance + *twr[i].distance;
+
+            if(cur_sum_distance < min_sum_distance) 
             {
-                min_2_dist = cur_dist;
+                min_sum_distance = cur_sum_distance;
+                min_1_idx = i - 1;
                 min_2_idx = i;
             }
-
-            if(min_2_dist < min_1_dist)
-            {
-                std::swap(min_1_idx, min_2_idx);
-            }
         }
+
+        // for(int i = 0; i < ANCHOR_COUNT; ++i) 
+        // {
+        //     bool is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+        //     Serial.print(i);
+        //     Serial.print(": ");
+        //     Serial.println(*twr[i].distance);
+
+        //     if(is_updated == false) continue;
+
+        //     double min_1_dist = *twr[min_1_idx].distance, min_2_dist = *twr[min_2_idx].distance;
+        //     double cur_dist = *twr[i].distance;
+
+        //     if(cur_dist < min_2_dist) 
+        //     {
+        //         min_2_dist = cur_dist;
+        //         min_2_idx = i;
+        //     }
+
+        //     if(min_2_dist < min_1_dist)
+        //     {
+        //         std::swap(min_1_idx, min_2_idx);
+        //     }
+        // }
 
         if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) 
         {
@@ -116,7 +139,7 @@ void RTLS_Task(void *parameter)
         }
 
         // Posting to raspRecvTask
-        xTaskNotifyGive(rasp_recv_task_handle);
+        xTaskNotifyGive(stm32_send_task_handle);
 
         // Pending for stm32SendTask
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
