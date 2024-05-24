@@ -1,4 +1,7 @@
 #include <HardwareSerial.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 #include <Arduino.h>
 #include <WiFi.h>
 #include <time.h>
@@ -38,6 +41,29 @@ TaskHandle_t rasp_send_task_handle = NULL;
 
 TaskHandle_t stm32_recv_task_handle = NULL;
 TaskHandle_t stm32_send_task_handle = NULL;
+
+SemaphoreHandle_t stm32_recv_data_semaphore;
+SemaphoreHandle_t rasp_recv_data_semaphore;
+
+// UART ISR handler for Raspberry Pi
+void IRAM_ATTR onRaspDataAvailable() {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    vTaskNotifyGiveFromISR(rasp_recv_task_handle, &xHigherPriorityTaskWoken);
+    if (xHigherPriorityTaskWoken == pdTRUE) {
+        portYIELD_FROM_ISR();
+    }
+}
+
+// UART ISR handler for STM32
+void IRAM_ATTR onStm32DataAvailable() {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    vTaskNotifyGiveFromISR(stm32_recv_task_handle, &xHigherPriorityTaskWoken);
+    if (xHigherPriorityTaskWoken == pdTRUE) {
+        portYIELD_FROM_ISR();
+    }
+}
+
+
 
 void setup()
 {
@@ -101,19 +127,32 @@ void setup()
     /***************** Rasp Setup Begin *****************/
 
     RaspHwSerial.begin(RASP_UART_BAUD, SERIAL_8N1, RASP_RX_PIN, RASP_TX_PIN);
+    RaspHwSerial.onReceive(onRaspDataAvailable);
+    
 
     /***************** Rasp Setup End *****************/
 
     /***************** STM32 Setup Begin *****************/
 
     Stm32HwSerial.begin(STM32_UART_BAUD, SERIAL_8N1, STM32_RX_PIN, STM32_TX_PIN);
+    Stm32HwSerial.onReceive(onStm32DataAvailable);
 
     /***************** STM32 Setup End *****************/
 
-    // xthal_set_intset(1);
+    /***************** Semaphore Setup Begin *****************/
+    
+    stm32_recv_data_semaphore = xSemaphoreCreateBinary();
+    rasp_recv_data_semaphore = xSemaphoreCreateBinary();
 
-    // Core 1: RTLS Task -> Core 1: Rasp Recv Task -> Core 1: STM32 Send Task
-    // Core 0: Rasp Send Task -> Core 0: STM32 Recv Task
+    xSemaphoreGive(stm32_recv_data_semaphore);
+    xSemaphoreGive(rasp_recv_data_semaphore);
+
+    /***************** Semaphore Setup End *****************/
+
+    xthal_set_intset(0);
+
+    // Core 1: RTLS Task -> Core 1: Stm32 Send Task -> Core 1: Rasp Send Task
+    // Core 0: Rasp Recv Task / Core 0: Stm32 Recv Task
 
 
     // Create RTLS Task
@@ -122,11 +161,11 @@ void setup()
     }
 
     // Create Rasp Tasks
-    if (xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 10, NULL, 1, &rasp_recv_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 10, NULL, 1, &rasp_recv_task_handle, 0) != pdPASS) {
         Serial.println("Failed to create Rasp Recv Task");
     }
 
-    if (xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 10, NULL, 1, &rasp_send_task_handle, 0) != pdPASS) {
+    if (xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 10, NULL, 1, &rasp_send_task_handle, 1) != pdPASS) {
         Serial.println("Failed to create Rasp Send Task");
     }
 
