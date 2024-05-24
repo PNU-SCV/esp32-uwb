@@ -43,28 +43,14 @@ struct TWR_t{
         if (this == &other)
             return *this; 
 
-        if (other.tx_poll_msg) {
-            tx_poll_msg = new uint8_t[sizeof(other.tx_poll_msg)];
-            std::memcpy(tx_poll_msg, other.tx_poll_msg, sizeof(other.tx_poll_msg));
-        } else {
-            tx_poll_msg = nullptr;
-        }
+        tx_poll_msg = other.tx_poll_msg;
 
-        if (other.rx_resp_msg) {
-            rx_resp_msg = new uint8_t[sizeof(other.rx_resp_msg)];
-            std::memcpy(rx_resp_msg, other.rx_resp_msg, sizeof(other.rx_resp_msg));
-        } else {
-            rx_resp_msg = nullptr;
-        }
+        rx_resp_msg = other.rx_resp_msg;
 
-        if (other.distance) {
-            distance = new double;
-            *distance = *(other.distance);
-        } else {
-            distance = nullptr;
-        }
+        distance = other.distance;
 
         anchor_loc = other.anchor_loc; 
+
         is_updated = other.is_updated;
 
         return *this;
