@@ -10,6 +10,10 @@ volatile RaspSendData rasp_send_data;
 
 extern TaskHandle_t stm32_send_task_handle;
 extern TaskHandle_t stm32_recv_task_handle;
+extern TaskHandle_t RTLS_task_handle;
+
+extern SemaphoreHandle_t stm32_recv_data_semaphore;
+extern SemaphoreHandle_t rasp_recv_data_semaphore;
 
 extern Point2D tag_position;
 extern Point2D target_loc;
@@ -29,6 +33,8 @@ void raspRecvTask(void *parameter)
 
     Serial.println("raspRecvTask");
 
+    if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+
     if (RaspHwSerial.available() >= sizeof(RaspRecvData)) 
     {
       RaspHwSerial.readBytes((char*)&rasp_recieve_data, sizeof(RaspRecvData));
@@ -40,8 +46,8 @@ void raspRecvTask(void *parameter)
       tag_angle = rasp_recieve_data.angle;
       rasp_cmd = rasp_recieve_data.cmd;
     }
-    // Posting to STM32 Send Task
-    xTaskNotifyGive(stm32_send_task_handle);
+
+    xSemaphoreGive(rasp_recv_data_semaphore);
   }
 }
 
@@ -52,6 +58,8 @@ void raspSendTask(void *parameter)
   {
     // Task pending (RTLS_Task에서 이 태스크를 트리거할 때까지 대기)
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
     Serial.println("raspSendTask");
 
@@ -64,7 +72,9 @@ void raspSendTask(void *parameter)
 
     Serial.println("Data sent to Raspberry Pi");
 
+    xSemaphoreGive(stm32_recv_data_semaphore);
+
     // Posting to stm32 Recv Task
-    xTaskNotifyGive(stm32_recv_task_handle);
+    xTaskNotifyGive(RTLS_task_handle);
   }
 }
