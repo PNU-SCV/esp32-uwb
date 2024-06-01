@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <time.h>
 #include "dw3000.h"
+#include "DW3000_RTLS.h"
 #include "rtls.h"
 #include "rasp.h"
 #include "stm32.h"
@@ -44,6 +45,8 @@ TaskHandle_t stm32_send_task_handle = NULL;
 
 SemaphoreHandle_t stm32_recv_data_semaphore;
 SemaphoreHandle_t rasp_recv_data_semaphore;
+
+DW3000_RTLS dw3000_rtls;
 
 // UART ISR handler for Raspberry Pi
 void IRAM_ATTR onRaspDataAvailable() {
