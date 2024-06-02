@@ -73,7 +73,7 @@ extern "C" void RTLSTaskWrapper(void *parameter)
         dw3000_rtls.RTLSTaskPrologue();
 
         /* RTLS Task */
-        dw3000_rtls.RTLSTask(parameter);
+        dw3000_rtls.setLocation(parameter);
 
         /* RTLS Task Epilogue */
         dw3000_rtls.RTLSTaskEpilogue();
