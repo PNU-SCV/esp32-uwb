@@ -65,7 +65,7 @@ void IRAM_ATTR onStm32DataAvailable() {
     }
 }
 
-void RTLSTask(void *parameter) {
+extern "C" void RTLSTaskWrapper(void *parameter) {
     dw3000_rtls.RTLSTask(parameter);
 }
 
@@ -112,7 +112,7 @@ void setup()
 
 
     // Create RTLS Task
-    if (xTaskCreatePinnedToCore(RTLSTask, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(RTLSTaskWrapper, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
         Serial.println("Failed to create RTLS Task");
     }
 
