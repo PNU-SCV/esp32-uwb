@@ -65,8 +65,19 @@ void IRAM_ATTR onStm32DataAvailable() {
     }
 }
 
-extern "C" void RTLSTaskWrapper(void *parameter) {
-    dw3000_rtls.RTLSTask(parameter);
+extern "C" void RTLSTaskWrapper(void *parameter) 
+{
+    while(true) 
+    {
+        /* RTLS Task Prologue */
+        dw3000_rtls.RTLSTaskPrologue();
+
+        /* RTLS Task */
+        dw3000_rtls.RTLSTask(parameter);
+
+        /* RTLS Task Epilogue */
+        dw3000_rtls.RTLSTaskEpilogue();
+    }
 }
 
 void setup()
