@@ -144,7 +144,7 @@ void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float di
     tag_position = {x, z};
 }
 
-void DW3000_RTLS::RTLSTask(void* parameter) {
+void DW3000_RTLS::setLocation() {
     int min_1_idx, min_2_idx;
 
     vTaskDelay(pdMS_TO_TICKS(2));
@@ -187,4 +187,8 @@ void DW3000_RTLS::RTLSTaskEpilogue() {
     xTaskNotifyGive(stm32_send_task_handle);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME));
+}
+
+Point2D DW3000_RTLS::getLocation() {
+    return tag_position;
 }
