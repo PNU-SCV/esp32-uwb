@@ -8,6 +8,8 @@
 #include "dw3000.h"
 #include "rtls.h"
 
+
+
 class DW3000_RTLS {
 private:
     dwt_config_t config = {
@@ -63,21 +65,21 @@ public:
         return tag_position;
     }
 
-    void RTLS_Setup();
+    void RTLSSetup();
 
-    bool poll_And_Recieve(uint8_t* poll_msg, uint8_t* resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double* distance);
+    bool pollAndRecieve(uint8_t* poll_msg, uint8_t* resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double* distance);
 
-    void calculate_Distance(uint8_t* buffer, double* distance);
+    void calculateDistance(uint8_t* buffer, double* distance);
 
-    void broadcast_Time_Sync_Msg(uint8_t* sync_msg, uint8_t sync_msg_size);
+    void broadcastTimeSyncMsg(uint8_t* sync_msg, uint8_t sync_msg_size);
     
-    void calculate_Position(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2);
+    void calculatePosition(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2);
 
-    void RTLS_Task(void* parameter);
+    void RTLSTask(void* parameter);
 
-    virtual void RTLS_Task_Prologue();
+    virtual void RTLSTaskPrologue();
 
-    virtual void RTLS_Task_Epilogue();
+    virtual void RTLSTaskEpilogue();
 };
 
 #endif

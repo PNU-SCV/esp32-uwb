@@ -59,94 +59,94 @@ void broadcast_Time_Sync_Msg(uint8_t *sync_msg, uint8_t sync_msg_size);
 
 void calculate_Position(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2);
 
-void RTLS_Task(void *parameter)
-{
-    int min_1_idx, min_2_idx;
+// void RTLS_Task(void *parameter)
+// {
+//     int min_1_idx, min_2_idx;
 
-    Serial.println("Range RX");
-    Serial.println("Setup over........");
+//     Serial.println("Range RX");
+//     Serial.println("Setup over........");
 
-    std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
-        if(a.anchor_loc->z == b.anchor_loc->z) return a.anchor_loc->x < b.anchor_loc->x;
+//     std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
+//         if(a.anchor_loc->z == b.anchor_loc->z) return a.anchor_loc->x < b.anchor_loc->x;
 
-        return a.anchor_loc->z < b.anchor_loc->z;
-    });
+//         return a.anchor_loc->z < b.anchor_loc->z;
+//     });
 
-    while (1)
-    {
-        /* Broadcast time sync message */
-        // broadcast_Time_Sync_Msg(tx_time_sync_msg, sizeof(tx_time_sync_msg));
-        // Serial.println("Time Synced!");
+//     while (1)
+//     {
+//         /* Broadcast time sync message */
+//         // broadcast_Time_Sync_Msg(tx_time_sync_msg, sizeof(tx_time_sync_msg));
+//         // Serial.println("Time Synced!");
 
-        vTaskDelay(pdMS_TO_TICKS(2));
+//         vTaskDelay(pdMS_TO_TICKS(2));
 
-        for (int i = 0;  i < ANCHOR_COUNT; ++i) 
-        {
-            twr[i].is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
-            Serial.print(i);
-            Serial.print(": ");
-            Serial.println(*twr[i].distance);
-        }
+//         for (int i = 0;  i < ANCHOR_COUNT; ++i) 
+//         {
+//             twr[i].is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+//             Serial.print(i);
+//             Serial.print(": ");
+//             Serial.println(*twr[i].distance);
+//         }
 
-        min_1_idx = min_2_idx = ANCHOR_COUNT;
+//         min_1_idx = min_2_idx = ANCHOR_COUNT;
 
-        for(int i = 1; i < ANCHOR_COUNT; i++) 
-        {
-            if(twr[i - 1].is_updated == false || twr[i].is_updated == false || twr[i - 1].anchor_loc->z != twr[i].anchor_loc->z) continue;
+//         for(int i = 1; i < ANCHOR_COUNT; i++) 
+//         {
+//             if(twr[i - 1].is_updated == false || twr[i].is_updated == false || twr[i - 1].anchor_loc->z != twr[i].anchor_loc->z) continue;
 
-            double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
-            double cur_sum_distance = *twr[i - 1].distance + *twr[i].distance;
+//             double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
+//             double cur_sum_distance = *twr[i - 1].distance + *twr[i].distance;
 
-            if(cur_sum_distance < min_sum_distance) 
-            {
-                min_sum_distance = cur_sum_distance;
-                min_1_idx = i - 1;
-                min_2_idx = i;
-            }
-        }
+//             if(cur_sum_distance < min_sum_distance) 
+//             {
+//                 min_sum_distance = cur_sum_distance;
+//                 min_1_idx = i - 1;
+//                 min_2_idx = i;
+//             }
+//         }
 
-        // for(int i = 0; i < ANCHOR_COUNT; ++i) 
-        // {
-        //     bool is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
-        //     Serial.print(i);
-        //     Serial.print(": ");
-        //     Serial.println(*twr[i].distance);
+//         // for(int i = 0; i < ANCHOR_COUNT; ++i) 
+//         // {
+//         //     bool is_updated = poll_And_Recieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+//         //     Serial.print(i);
+//         //     Serial.print(": ");
+//         //     Serial.println(*twr[i].distance);
 
-        //     if(is_updated == false) continue;
+//         //     if(is_updated == false) continue;
 
-        //     double min_1_dist = *twr[min_1_idx].distance, min_2_dist = *twr[min_2_idx].distance;
-        //     double cur_dist = *twr[i].distance;
+//         //     double min_1_dist = *twr[min_1_idx].distance, min_2_dist = *twr[min_2_idx].distance;
+//         //     double cur_dist = *twr[i].distance;
 
-        //     if(cur_dist < min_2_dist) 
-        //     {
-        //         min_2_dist = cur_dist;
-        //         min_2_idx = i;
-        //     }
+//         //     if(cur_dist < min_2_dist) 
+//         //     {
+//         //         min_2_dist = cur_dist;
+//         //         min_2_idx = i;
+//         //     }
 
-        //     if(min_2_dist < min_1_dist)
-        //     {
-        //         std::swap(min_1_idx, min_2_idx);
-        //     }
-        // }
+//         //     if(min_2_dist < min_1_dist)
+//         //     {
+//         //         std::swap(min_1_idx, min_2_idx);
+//         //     }
+//         // }
 
-        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) 
-        {
-            Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
-            float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
+//         if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) 
+//         {
+//             Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
+//             float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
 
-            /* Calulate current position rest of time slots (and, post call end of the function)*/
-            calculate_Position(anchor_1, anchor_2, dist_1, dist_2);
-        }
+//             /* Calulate current position rest of time slots (and, post call end of the function)*/
+//             calculate_Position(anchor_1, anchor_2, dist_1, dist_2);
+//         }
 
-        // Posting to raspRecvTask
-        xTaskNotifyGive(stm32_send_task_handle);
+//         // Posting to raspRecvTask
+//         xTaskNotifyGive(stm32_send_task_handle);
 
-        // Pending for stm32SendTask
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+//         // Pending for stm32SendTask
+//         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME));
-    }
-}
+//         vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME));
+//     }
+// }
 
 
 bool poll_And_Recieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance)

@@ -7,7 +7,6 @@
 #include <time.h>
 #include "dw3000.h"
 #include "DW3000_RTLS.h"
-#include "rtls.h"
 #include "rasp.h"
 #include "stm32.h"
 
@@ -66,63 +65,17 @@ void IRAM_ATTR onStm32DataAvailable() {
     }
 }
 
-
+void RTLSTask(void *parameter) {
+    dw3000_rtls.RTLSTask(parameter);
+}
 
 void setup()
 {
     Serial.begin(115200);
 
     /***************** RTLS Setup Begin *****************/
-    spiBegin(PIN_IRQ, PIN_RST);
-    spiSelect(PIN_SS);
-
     
-    delay(2); // Time needed for DW3000 to start up (transition from INIT_RC to IDLE_RC, or could wait for SPIRDY event)
-
-    while (!dwt_checkidlerc()) // Need to make sure DW IC is in IDLE_RC before proceeding
-    {
-        while (1)
-            ;
-    }
-
-    if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR)
-    {
-        while (1)
-            ;
-    }
-
-    // Enabling LEDs here for debug so that for each TX the D1 LED will flash on DW3000 red eval-shield boards.
-    dwt_setleds(DWT_LEDS_ENABLE | DWT_LEDS_INIT_BLINK);
-
-    /* Configure DW IC. See NOTE 6 below. */
-    if (dwt_configure(&config)) // if the dwt_configure returns DWT_ERROR either the PLL or RX calibration has failed the host should reset the device
-    {
-        while (1)
-            ;
-    }
-
-    /* Configure the TX spectrum parameters (power, PG delay and PG count) */
-    dwt_configuretxrf(&txconfig_options);
-
-    /* Apply default antenna delay value. See NOTE 2 below. */
-    dwt_setrxantennadelay(RX_ANT_DLY);
-    dwt_settxantennadelay(TX_ANT_DLY);
-
-    /* Set expected response's delay and timeout. See NOTE 1 and 5 below.
-     * As this example only handles one incoming frame with always the same delay and timeout, those values can be set here once for all. */
-    dwt_setrxaftertxdelay(POLL_TX_TO_RESP_RX_DLY_UUS);
-    dwt_setrxtimeout(RESP_RX_TIMEOUT_UUS);
-    // 이걸 반대편에도 추가해 보던가 하면 될듯.
-
-    /* Next can enable TX/RX states output on GPIOs 5 and 6 to help debug, and also TX/RX LEDs
-     * Note, in real low power applications the LEDs should not be used. */
-    dwt_setlnapamode(DWT_LNA_ENABLE | DWT_PA_ENABLE);
-
-    // dwt_setcallbacks(&Tx_Callback_ISR, &Rx_Callback_ISR, &Rx_Timeout_ISR, &Rx_Error_ISR, &Spi_Error_ISR, &Spi_Ready_ISR);
-    // dwt_setcallbacks(NULL, &Rx_Callback_ISR, NULL, NULL, NULL, NULL);
-
-    // dwt_setinterrupt(SYS_ENABLE_LO_RXFCG_ENABLE_BIT_MASK, 0, DWT_ENABLE_INT);
-    // 이후 SPI 설정에서 이를 덮어쓸 수도 있음.
+    dw3000_rtls.RTLSSetup();
 
     /***************** RTLS Setup End *****************/
 
@@ -159,7 +112,7 @@ void setup()
 
 
     // Create RTLS Task
-    if (xTaskCreatePinnedToCore(RTLS_Task, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(RTLSTask, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
         Serial.println("Failed to create RTLS Task");
     }
 
