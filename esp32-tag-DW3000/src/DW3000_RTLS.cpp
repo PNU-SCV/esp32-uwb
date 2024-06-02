@@ -52,6 +52,11 @@ void DW3000_RTLS::RTLSSetup() {
 
     /* Note, in real low power applications the LEDs should not be used. */
     dwt_setlnapamode(DWT_LNA_ENABLE | DWT_PA_ENABLE);
+
+    /* Sort the anchors by their location */
+    std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
+        return a.anchor_loc->z == b.anchor_loc->z ? a.anchor_loc->x < b.anchor_loc->x : a.anchor_loc->z < b.anchor_loc->z;
+    });
 }
 
 /*********************************************************************************************************************************************************
@@ -142,48 +147,35 @@ void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float di
 void DW3000_RTLS::RTLSTask(void* parameter) {
     int min_1_idx, min_2_idx;
 
-    Serial.println("Range RX");
-    Serial.println("Setup over........");
+    vTaskDelay(pdMS_TO_TICKS(2));
 
-    std::sort(twr, twr + ANCHOR_COUNT, [&](TWR_t a, TWR_t b) { 
-        return a.anchor_loc->z == b.anchor_loc->z ? a.anchor_loc->x < b.anchor_loc->x : a.anchor_loc->z < b.anchor_loc->z;
-    });
+    for (int i = 0; i < ANCHOR_COUNT; ++i) {
+        twr[i].is_updated = pollAndRecieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+        Serial.print(i);
+        Serial.print(": ");
+        Serial.println(*twr[i].distance);
+    }
 
-    while (1) {
-        RTLSTaskPrologue();
+    min_1_idx = min_2_idx = ANCHOR_COUNT;
 
-        vTaskDelay(pdMS_TO_TICKS(2));
+    for (int i = 1; i < ANCHOR_COUNT; i++) {
+        if (!twr[i - 1].is_updated || !twr[i].is_updated || twr[i - 1].anchor_loc->z != twr[i].anchor_loc->z) continue;
 
-        for (int i = 0; i < ANCHOR_COUNT; ++i) {
-            twr[i].is_updated = pollAndRecieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
-            Serial.print(i);
-            Serial.print(": ");
-            Serial.println(*twr[i].distance);
+        double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
+        double cur_sum_distance = *twr[i - 1].distance + *twr[i].distance;
+
+        if (cur_sum_distance < min_sum_distance) {
+            min_sum_distance = cur_sum_distance;
+            min_1_idx = i - 1;
+            min_2_idx = i;
         }
+    }
 
-        min_1_idx = min_2_idx = ANCHOR_COUNT;
+    if (min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) {
+        Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
+        float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
 
-        for (int i = 1; i < ANCHOR_COUNT; i++) {
-            if (!twr[i - 1].is_updated || !twr[i].is_updated || twr[i - 1].anchor_loc->z != twr[i].anchor_loc->z) continue;
-
-            double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
-            double cur_sum_distance = *twr[i - 1].distance + *twr[i].distance;
-
-            if (cur_sum_distance < min_sum_distance) {
-                min_sum_distance = cur_sum_distance;
-                min_1_idx = i - 1;
-                min_2_idx = i;
-            }
-        }
-
-        if (min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) {
-            Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
-            float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
-
-            calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
-        }
-
-        RTLSTaskEpilogue();
+        calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
     }
 }
 
