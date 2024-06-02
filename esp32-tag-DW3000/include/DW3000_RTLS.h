@@ -75,7 +75,9 @@ public:
     
     void calculatePosition(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2);
 
-    void RTLSTask(void* parameter);
+    void setLocation();
+
+    Point2D getLocation();
 
     virtual void RTLSTaskPrologue();
 
