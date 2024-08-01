@@ -12,17 +12,19 @@ extern TaskHandle_t rasp_send_task_handle;
 extern uint8_t rasp_cmd;
 extern uint8_t rasp_stat;
 
-HardwareSerial Stm32HwSerial(2);
+HardwareSerial Stm32HwSerial(1);
 
-volatile STM32RecvData stm32_recieve_data;
-volatile STM32SendData stm32_send_data;
+STM32RecvData stm32_recieve_data;
+STM32SendData stm32_send_data;
 
 extern SemaphoreHandle_t stm32_recv_data_semaphore;
 extern SemaphoreHandle_t rasp_recv_data_semaphore;
 
-Point2D target_loc = {0.0, 0.0};
-Point2D tag_position = {0.0, 0.0};
-float tag_angle = 0.0;
+extern SemaphoreHandle_t stm32_send_flag_semaphore;
+
+extern Point2D target_loc;
+extern Point2D tag_position;
+extern float tag_angle;
 
 float getAngle(Point2D target, Point2D cur);
 
@@ -42,6 +44,9 @@ void stm32RecvTask(void *parameter)
       Stm32HwSerial.readBytes((char*)&stm32_recieve_data, sizeof(STM32RecvData));
 
       rasp_stat = stm32_recieve_data.status;
+
+      Serial.print("STM32 Recv: ");
+      Serial.println(rasp_stat);
     }
 
     xSemaphoreGive(stm32_recv_data_semaphore);
@@ -64,6 +69,8 @@ void stm32SendTask(void *parameter)
       continue;
     }
 
+    //if(xSemaphoreTake(stm32_send_flag_semaphore, 0) == pdFALSE) continue;
+
     Serial.println("stm32SendTask");
 
     if (tag_position == target_loc || rasp_cmd == CMD_STOP || stm32_recieve_data.status == 0x01) 
@@ -82,6 +89,10 @@ void stm32SendTask(void *parameter)
     {
       stm32_send_data.cmd = CMD_COUNTERCLOCKWISE_ROTATE;
     }
+
+    // stm32_send_data.cmd = CMD_COUNTERCLOCKWISE_ROTATE;
+    if(tag_position.z < 1) stm32_send_data.cmd = CMD_FORWARD;
+    else stm32_send_data.cmd = CMD_STOP;
 
     /* Send CMD to STM32 */
     Stm32HwSerial.write((const uint8_t*)&stm32_send_data, sizeof(STM32SendData));
