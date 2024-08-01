@@ -45,7 +45,14 @@ TaskHandle_t stm32_send_task_handle = NULL;
 SemaphoreHandle_t stm32_recv_data_semaphore;
 SemaphoreHandle_t rasp_recv_data_semaphore;
 
+SemaphoreHandle_t stm32_send_flag_semaphore;
+
 DW3000_RTLS dw3000_rtls;
+
+Point2D target_loc = {0.0, 0.0};
+Point2D tag_position = {0.0, 0.0};
+float tag_angle = 0.0;
+
 
 // UART ISR handler for Raspberry Pi
 void IRAM_ATTR onRaspDataAvailable() {
@@ -65,7 +72,7 @@ void IRAM_ATTR onStm32DataAvailable() {
     }
 }
 
-extern "C" void RTLSTaskWrapper(void *parameter) 
+void RTLSTaskWrapper(void *parameter) 
 {
     while(true) 
     {
@@ -77,6 +84,8 @@ extern "C" void RTLSTaskWrapper(void *parameter)
 
         /* RTLS Task Epilogue */
         dw3000_rtls.RTLSTaskEpilogue();
+
+        tag_position = dw3000_rtls.getTagPosition();
     }
 }
 
@@ -88,6 +97,8 @@ void setup()
     
     dw3000_rtls.RTLSSetup();
 
+    Serial.println("1");
+
     /***************** RTLS Setup End *****************/
 
 
@@ -95,6 +106,8 @@ void setup()
 
     RaspHwSerial.begin(RASP_UART_BAUD, SERIAL_8N1, RASP_RX_PIN, RASP_TX_PIN);
     RaspHwSerial.onReceive(onRaspDataAvailable);
+
+    Serial.println("2");
     
 
     /***************** Rasp Setup End *****************/
@@ -104,12 +117,15 @@ void setup()
     Stm32HwSerial.begin(STM32_UART_BAUD, SERIAL_8N1, STM32_RX_PIN, STM32_TX_PIN);
     Stm32HwSerial.onReceive(onStm32DataAvailable);
 
+    Serial.println("3");
+
     /***************** STM32 Setup End *****************/
 
     /***************** Semaphore Setup Begin *****************/
     
     stm32_recv_data_semaphore = xSemaphoreCreateBinary();
     rasp_recv_data_semaphore = xSemaphoreCreateBinary();
+    stm32_send_flag_semaphore = xSemaphoreCreateBinary();
 
     xSemaphoreGive(stm32_recv_data_semaphore);
     xSemaphoreGive(rasp_recv_data_semaphore);
@@ -118,32 +134,35 @@ void setup()
 
     xthal_set_intset(0);
 
+    Serial.println("4");
+
     // Core 1: RTLS Task -> Core 1: Stm32 Send Task -> Core 1: Rasp Send Task
     // Core 0: Rasp Recv Task / Core 0: Stm32 Recv Task
 
-
-    // Create RTLS Task
-    if (xTaskCreatePinnedToCore(RTLSTaskWrapper, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
-        Serial.println("Failed to create RTLS Task");
-    }
-
     // Create Rasp Tasks
-    if (xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 10, NULL, 1, &rasp_recv_task_handle, 0) != pdPASS) {
+    if (xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 14, NULL, 1, &rasp_recv_task_handle, 0) != pdPASS) {
         Serial.println("Failed to create Rasp Recv Task");
     }
 
-    if (xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 10, NULL, 1, &rasp_send_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 14, NULL, 1, &rasp_send_task_handle, 1) != pdPASS) {
         Serial.println("Failed to create Rasp Send Task");
     }
 
     // Create STM32 Tasks
-    if (xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 10, NULL, 2, &stm32_recv_task_handle, 0) != pdPASS) {
+    if (xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 14, NULL, 2, &stm32_recv_task_handle, 0) != pdPASS) {
         Serial.println("Failed to create STM32 Recv Task");
     }
 
-    if (xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 10, NULL, 2, &stm32_send_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 14, NULL, 2, &stm32_send_task_handle, 1) != pdPASS) {
         Serial.println("Failed to create STM32 Send Task");
     }
+
+    // Create RTLS Task
+    if (xTaskCreatePinnedToCore(RTLSTaskWrapper, "RTLS_Task", 1 << 14, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
+        Serial.println("Failed to create RTLS Task");
+    }
+
+    Serial.println("5");
 
 
     
