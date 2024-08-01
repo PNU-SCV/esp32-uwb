@@ -7,6 +7,55 @@
 #include <vector>
 #include "dw3000.h"
 #include "rtls.h"
+#include "point.h"
+
+#define PIN_RST 27
+#define PIN_IRQ 34
+#define PIN_SS 4
+
+#define RNG_DELAY_MS 1000
+/* No obstacle : 16385, PC: 16372 */
+#define TX_ANT_DLY 16372// 16385
+#define RX_ANT_DLY 16372 // 16385
+#define ALL_MSG_COMMON_LEN 10
+#define ALL_MSG_SN_IDX 2
+#define RESP_MSG_POLL_RX_TS_IDX 10
+#define RESP_MSG_RESP_TX_TS_IDX 14
+#define RESP_MSG_TS_LEN 4
+#define POLL_TX_TO_RESP_RX_DLY_UUS 240
+#define RESP_RX_TIMEOUT_UUS 400
+#define POLL_MSG_SIZE (uint8_t) 12
+#define RESP_MSG_SIZE (uint8_t) 20
+
+#define DIST_UPDATE_RATE 0.5
+
+#define ANCHOR_COUNT 4
+
+
+struct TWR_t{
+    uint8_t *tx_poll_msg;
+    uint8_t *rx_resp_msg;
+    double *distance;
+    const Point3D *anchor_loc;
+    bool is_updated;
+
+     TWR_t& operator=(const TWR_t& other) {
+        if (this == &other)
+            return *this; 
+
+        tx_poll_msg = other.tx_poll_msg;
+
+        rx_resp_msg = other.rx_resp_msg;
+
+        distance = other.distance;
+
+        anchor_loc = other.anchor_loc; 
+
+        is_updated = other.is_updated;
+
+        return *this;
+    }
+};
 
 
 
@@ -28,30 +77,10 @@ private:
         DWT_PDOA_M0         /* PDOA mode off */
     };
 
-    uint8_t tx_time_sync_msg[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'S', 'Y', 'N', 0xE0, 0, 0};
-
-    // Anchor Configuration
-    Point3D anchor_A = {1.5, 0, 0};
-    Point3D anchor_B = {3.0, 0, 0};
-
-    uint8_t tx_poll_msg_A[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'A', 'T', 'A', 0xE0, 0, 0};
-    uint8_t tx_poll_msg_B[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'B', 'T', 'A', 0xE0, 0, 0};
-
-    uint8_t rx_resp_msg_A[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    uint8_t rx_resp_msg_B[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'B', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
     uint8_t frame_seq_nb = 0;
     uint8_t rx_buffer[20];
     uint32_t status_reg = 0;
     double tof;
-    double distance_A, distance_B;
-    double INF_distance = 1024.0;
-
-    TWR_t twr[3] = {
-        {tx_poll_msg_A, rx_resp_msg_A, &distance_A, &anchor_A, false},
-        {tx_poll_msg_B, rx_resp_msg_B, &distance_B, &anchor_B, false},
-        {NULL, NULL, &INF_distance, NULL, false}
-    };
 
     Point2D tag_position;
     uint32_t last_synced_time = 0;
@@ -70,8 +99,6 @@ public:
     bool pollAndRecieve(uint8_t* poll_msg, uint8_t* resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double* distance);
 
     void calculateDistance(uint8_t* buffer, double* distance);
-
-    void broadcastTimeSyncMsg(uint8_t* sync_msg, uint8_t sync_msg_size);
     
     void calculatePosition(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2);
 
