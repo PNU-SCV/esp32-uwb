@@ -1,5 +1,33 @@
 #include "DW3000_RTLS.h"
 
+
+// Anchor Configuration
+double distance_A, distance_B, distance_C, distance_D;
+double INF_distance = 1024.0;
+
+Point3D anchor_A = {1.5, 0.0, 0.0};
+Point3D anchor_B = {3.0, 0.0, 0.0};
+Point3D anchor_C = {0.0, 0.0, 0.0};
+Point3D anchor_D = {4.5, 0.0, 0.0};
+
+uint8_t tx_poll_msg_A[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'A', 'T', 'A', 0xE0, 0, 0};
+uint8_t tx_poll_msg_B[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'B', 'T', 'A', 0xE0, 0, 0};
+uint8_t tx_poll_msg_C[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'C', 'T', 'A', 0xE0, 0, 0};
+uint8_t tx_poll_msg_D[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'D', 'T', 'A', 0xE0, 0, 0};
+
+uint8_t rx_resp_msg_A[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t rx_resp_msg_B[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'B', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t rx_resp_msg_C[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'C', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+uint8_t rx_resp_msg_D[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'D', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+TWR_t twr[ANCHOR_COUNT + 1] = {
+    {tx_poll_msg_A, rx_resp_msg_A, &distance_A, &anchor_A, false},
+    {tx_poll_msg_B, rx_resp_msg_B, &distance_B, &anchor_B, false},
+    {tx_poll_msg_C, rx_resp_msg_C, &distance_C, &anchor_C, false},
+    {tx_poll_msg_D, rx_resp_msg_D, &distance_D, &anchor_D, false},
+    {NULL, NULL, &INF_distance, NULL, false}
+};
+
 /*********************************************************************************************************************************************************
  * 														Extern Variables
  *********************************************************************************************************************************************************/
@@ -73,6 +101,8 @@ bool DW3000_RTLS::pollAndRecieve(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t p
 
     dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
 
+    // vTaskDelay(pdMS_TO_TICKS(1));
+
     while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)));
 
     frame_seq_nb = (frame_seq_nb + 1) % 256;
@@ -117,18 +147,6 @@ void DW3000_RTLS::calculateDistance(uint8_t* buffer, double *distance) {
     *distance = *distance + (dist_diff < 0 ? -1 : 1) * log10(abs(dist_diff) + 1);
 }
 
-void DW3000_RTLS::broadcastTimeSyncMsg(uint8_t *sync_msg, uint8_t sync_msg_size) {
-    sync_msg[ALL_MSG_SN_IDX] = frame_seq_nb;
-    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
-    dwt_writetxdata(sync_msg_size, sync_msg, 0);
-    dwt_writetxfctrl(sync_msg_size, 0, 1);
-
-    int ret = dwt_starttx(DWT_START_TX_IMMEDIATE);
-
-    frame_seq_nb = (frame_seq_nb + 1) % 256;
-    last_synced_time = millis();
-}
-
 void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2) {
     if(anchor_1.x > anchor_2.x) {
         std::swap(anchor_1, anchor_2);
@@ -142,12 +160,15 @@ void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float di
     float z = anchor_1.z + dz;
 
     tag_position = {x, z};
+
+    Serial.print("X : ");
+    Serial.print(x);
+    Serial.print("Z : ");
+    Serial.println(z);
 }
 
 void DW3000_RTLS::setLocation() {
     int min_1_idx, min_2_idx;
-
-    vTaskDelay(pdMS_TO_TICKS(2));
 
     for (int i = 0; i < ANCHOR_COUNT; ++i) {
         twr[i].is_updated = pollAndRecieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
@@ -180,13 +201,12 @@ void DW3000_RTLS::setLocation() {
 }
 
 void DW3000_RTLS::RTLSTaskPrologue() {
-    
+    vTaskDelay(pdMS_TO_TICKS(500));
 }
 
 void DW3000_RTLS::RTLSTaskEpilogue() {
     xTaskNotifyGive(stm32_send_task_handle);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(FRAME_CYCLE_TIME));
 }
 
 Point2D DW3000_RTLS::getLocation() {
