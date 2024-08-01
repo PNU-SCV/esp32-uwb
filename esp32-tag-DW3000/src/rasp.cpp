@@ -3,10 +3,10 @@
 #include "freertos/FreeRTOS.h"
 #include "rasp.h"
 
-HardwareSerial RaspHwSerial(1);
+HardwareSerial RaspHwSerial(2);
 
-volatile RaspRecvData rasp_recieve_data;
-volatile RaspSendData rasp_send_data;
+RaspRecvData rasp_recieve_data;
+RaspSendData rasp_send_data;
 
 extern TaskHandle_t stm32_send_task_handle;
 extern TaskHandle_t stm32_recv_task_handle;
@@ -14,6 +14,8 @@ extern TaskHandle_t RTLS_task_handle;
 
 extern SemaphoreHandle_t stm32_recv_data_semaphore;
 extern SemaphoreHandle_t rasp_recv_data_semaphore;
+
+extern SemaphoreHandle_t stm32_send_flag_semaphore;
 
 extern Point2D tag_position;
 extern Point2D target_loc;
@@ -45,7 +47,19 @@ void raspRecvTask(void *parameter)
       target_loc = {rasp_recieve_data.dest_x, rasp_recieve_data.dest_z};
       tag_angle = rasp_recieve_data.angle;
       rasp_cmd = rasp_recieve_data.cmd;
+
+      Serial.print("RASP : ");
+      Serial.print(target_loc.x);
+      Serial.print(", ");
+      Serial.print(target_loc.z);
+      Serial.print(tag_angle);
+      Serial.print(", ");
+      Serial.println(rasp_cmd);
     }
+
+    xSemaphoreTake(stm32_send_flag_semaphore, 0);
+
+    xSemaphoreGive(stm32_send_flag_semaphore);
 
     xSemaphoreGive(rasp_recv_data_semaphore);
   }
@@ -66,6 +80,13 @@ void raspSendTask(void *parameter)
     rasp_send_data.stat = rasp_stat;
     rasp_send_data.loc_x = tag_position.x;
     rasp_send_data.loc_z = tag_position.z;
+
+    Serial.print("Sending data: stat=");
+    Serial.print(rasp_send_data.stat);
+    Serial.print(", loc_x=");
+    Serial.print(rasp_send_data.loc_x);
+    Serial.print(", loc_z=");
+    Serial.println(rasp_send_data.loc_z);
 
     // 데이터 송신
     RaspHwSerial.write((const uint8_t*)&rasp_send_data, sizeof(RaspSendData));
