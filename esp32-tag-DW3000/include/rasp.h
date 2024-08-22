@@ -8,16 +8,20 @@
 #define RASP_TX_PIN 26
 
 typedef struct {
+    uint8_t start_byte;
     uint8_t cmd;
     float dest_x;
     float dest_z;
     float angle;
+    uint8_t end_byte;
 } RaspRecvData;
 
 typedef struct {
+    uint8_t start_byte;
     uint8_t stat;
     float loc_x;
     float loc_z;
+    uint8_t end_byte;
 } RaspSendData;
 
 void raspRecvTask(void *parameter);
