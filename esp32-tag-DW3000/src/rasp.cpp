@@ -3,10 +3,13 @@
 #include "freertos/FreeRTOS.h"
 #include "rasp.h"
 
+const uint8_t raspStartByte = 0x02;
+const uint8_t raspEndByte = 0x07;
+
 HardwareSerial RaspHwSerial(2);
 
-RaspRecvData rasp_recieve_data;
-RaspSendData rasp_send_data;
+RaspRecvData raspRecieveData;
+RaspSendData raspSendData;
 
 extern TaskHandle_t stm32_send_task_handle;
 extern TaskHandle_t stm32_recv_task_handle;
@@ -17,13 +20,13 @@ extern SemaphoreHandle_t rasp_recv_data_semaphore;
 
 extern SemaphoreHandle_t stm32_send_flag_semaphore;
 
-extern Point2D tag_position;
-extern Point2D target_loc;
-extern float tag_angle;
+extern Point2D tagPosition;
 
-uint8_t rasp_cmd = 0;
+extern int8_t stm32Status;
 
-uint8_t rasp_stat = 0;
+float tagAngle = 0.0;
+uint8_t raspCmd = 0x00;
+Point2D destPoint = {3.0, 2.0};
 
 // // 수신 태스크
 void raspRecvTask(void *parameter) 
@@ -35,39 +38,46 @@ void raspRecvTask(void *parameter)
 
     Serial.println("raspRecvTask");
 
-    if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+    uint8_t start_byte, end_byte;
 
     if (RaspHwSerial.available() >= sizeof(RaspRecvData)) 
     {
-      RaspHwSerial.readBytes((char*)&rasp_recieve_data, sizeof(RaspRecvData));
+      RaspHwSerial.readBytes((char*)&raspRecieveData, sizeof(RaspRecvData));
 
       Serial.println("Data received from Raspberry Pi");
 
+      if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+
       /* Setting target_angle, target_loc */
-      target_loc = {rasp_recieve_data.dest_x, rasp_recieve_data.dest_z};
-      tag_angle = rasp_recieve_data.angle;
-      rasp_cmd = rasp_recieve_data.cmd;
+      start_byte = raspRecieveData.start_byte;
+
+      destPoint = {raspRecieveData.dest_x, raspRecieveData.dest_z};
+      tagAngle = raspRecieveData.angle;
+      raspCmd = raspRecieveData.cmd;
+
+      end_byte = raspRecieveData.end_byte;
+
+      xSemaphoreGive(rasp_recv_data_semaphore);
+
+      if(start_byte != raspStartByte || end_byte != raspEndByte) continue;
 
       Serial.print("RASP : ");
-      Serial.print(target_loc.x);
+      Serial.print(raspCmd);
       Serial.print(", ");
-      Serial.print(target_loc.z);
-      Serial.print(tag_angle);
+      Serial.print(destPoint.x);
       Serial.print(", ");
-      Serial.println(rasp_cmd);
+      Serial.print(destPoint.z);
+      Serial.print(", ");
+      Serial.println(tagAngle);
     }
-
-    xSemaphoreTake(stm32_send_flag_semaphore, 0);
-
-    xSemaphoreGive(stm32_send_flag_semaphore);
-
-    xSemaphoreGive(rasp_recv_data_semaphore);
   }
 }
 
 // 송신 태스크
 void raspSendTask(void *parameter) 
 {
+  uint8_t stm32_status;
+
   while (true) 
   {
     // Task pending (RTLS_Task에서 이 태스크를 트리거할 때까지 대기)
@@ -75,25 +85,32 @@ void raspSendTask(void *parameter)
 
     if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
-    Serial.println("raspSendTask");
-
-    rasp_send_data.stat = rasp_stat;
-    rasp_send_data.loc_x = tag_position.x;
-    rasp_send_data.loc_z = tag_position.z;
-
-    Serial.print("Sending data: stat=");
-    Serial.print(rasp_send_data.stat);
-    Serial.print(", loc_x=");
-    Serial.print(rasp_send_data.loc_x);
-    Serial.print(", loc_z=");
-    Serial.println(rasp_send_data.loc_z);
-
-    // 데이터 송신
-    RaspHwSerial.write((const uint8_t*)&rasp_send_data, sizeof(RaspSendData));
-
-    Serial.println("Data sent to Raspberry Pi");
+    stm32_status = stm32Status;
 
     xSemaphoreGive(stm32_recv_data_semaphore);
+
+    Serial.println("raspSendTask");
+
+    raspSendData.start_byte = raspStartByte;
+
+    raspSendData.stat = stm32_status;
+
+    raspSendData.loc_x = tagPosition.x;
+    raspSendData.loc_z = tagPosition.z;
+    
+    raspSendData.end_byte = raspEndByte;
+
+    Serial.print("Sending data: stat=");
+    Serial.print(raspSendData.stat);
+    Serial.print(", loc_x=");
+    Serial.print(raspSendData.loc_x);
+    Serial.print(", loc_z=");
+    Serial.println(raspSendData.loc_z);
+
+    // 데이터 송신
+    RaspHwSerial.write((const uint8_t*)&raspSendData, sizeof(RaspSendData));
+
+    Serial.println("Data sent to Raspberry Pi");
 
     // Posting to stm32 Recv Task
     xTaskNotifyGive(RTLS_task_handle);
