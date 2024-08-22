@@ -144,7 +144,7 @@ void DW3000_RTLS::calculateDistance(uint8_t* buffer, double *distance) {
 
     double tof = ((rtd_init - rtd_resp * (1 - clockOffsetRatio)) / 2.0) * DWT_TIME_UNITS;
     double dist_diff = tof * SPEED_OF_LIGHT - *distance;
-    *distance = *distance + (dist_diff < 0 ? -1 : 1) * log10(abs(dist_diff) + 1);
+    *distance = *distance + dist_diff * 0.1;
 }
 
 void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2) {
@@ -163,7 +163,7 @@ void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float di
 
     Serial.print("X : ");
     Serial.print(x);
-    Serial.print("Z : ");
+    Serial.print(", Z : ");
     Serial.println(z);
 }
 
@@ -172,9 +172,6 @@ void DW3000_RTLS::setLocation() {
 
     for (int i = 0; i < ANCHOR_COUNT; ++i) {
         twr[i].is_updated = pollAndRecieve(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
-        Serial.print(i);
-        Serial.print(": ");
-        Serial.println(*twr[i].distance);
     }
 
     min_1_idx = min_2_idx = ANCHOR_COUNT;
@@ -193,6 +190,14 @@ void DW3000_RTLS::setLocation() {
     }
 
     if (min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) {
+        // Serial.print(min_1_idx);
+        // Serial.print(": ");
+        // Serial.println(*twr[min_1_idx].distance);
+
+        // Serial.print(min_2_idx);
+        // Serial.print(": ");
+        // Serial.println(*twr[min_2_idx].distance);
+
         Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
         float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
 
@@ -201,7 +206,7 @@ void DW3000_RTLS::setLocation() {
 }
 
 void DW3000_RTLS::RTLSTaskPrologue() {
-    vTaskDelay(pdMS_TO_TICKS(500));
+    vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
 void DW3000_RTLS::RTLSTaskEpilogue() {
