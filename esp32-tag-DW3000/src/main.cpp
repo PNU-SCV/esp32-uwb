@@ -49,10 +49,7 @@ SemaphoreHandle_t stm32_send_flag_semaphore;
 
 DW3000_RTLS dw3000_rtls;
 
-Point2D target_loc = {0.0, 0.0};
-Point2D tag_position = {0.0, 0.0};
-float tag_angle = 0.0;
-
+Point2D tagPosition = {0.0, 0.0};
 
 // UART ISR handler for Raspberry Pi
 void IRAM_ATTR onRaspDataAvailable() {
@@ -85,7 +82,7 @@ void RTLSTaskWrapper(void *parameter)
         /* RTLS Task Epilogue */
         dw3000_rtls.RTLSTaskEpilogue();
 
-        tag_position = dw3000_rtls.getTagPosition();
+        tagPosition = dw3000_rtls.getTagPosition();
     }
 }
 
