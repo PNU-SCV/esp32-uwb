@@ -7,6 +7,11 @@
 #define STM32_RX_PIN 36
 #define STM32_TX_PIN 25
 
+#define NO_OBSTACLE (uint8_t)0x00
+#define LEFT_OBSTACLE (uint8_t)0x01
+#define MID_OBSTACLE (uint8_t)0x02
+#define RIGHT_OBSTACLE (uint8_t)0x03
+
 #define CMD_STOP (uint8_t)0x00
 #define CMD_FORWARD (uint8_t)0x01
 #define CMD_CLOCKWISE_ROTATE (uint8_t)0x02
