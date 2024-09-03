@@ -4,13 +4,12 @@
 #include "rasp.h"
 #include "utils.h"
 
+/*********************************************************************************************************************************************************
+ * 														Extern Variables
+ *********************************************************************************************************************************************************/
+
 const uint8_t raspStartByte = 0x02;
 const uint8_t raspEndByte = 0x07;
-
-HardwareSerial RaspHwSerial(2);
-
-RaspRecvData raspRecieveData;
-RaspSendData raspSendData;
 
 extern TaskHandle_t stm32_send_task_handle;
 extern TaskHandle_t stm32_recv_task_handle;
@@ -24,6 +23,15 @@ extern SemaphoreHandle_t stm32_send_flag_semaphore;
 extern Point2D tagPosition;
 
 extern int8_t stm32Status;
+
+/*********************************************************************************************************************************************************
+ * 														Global Variables
+ *********************************************************************************************************************************************************/
+
+HardwareSerial RaspHwSerial(2);
+
+RaspRecvData raspRecieveData;
+RaspSendData raspSendData;
 
 float tagAngle = 0.0;
 uint8_t raspCmd = 0x00;
@@ -96,13 +104,6 @@ void raspSendTask(void *parameter)
         raspSendData.loc_z = tagPosition.z;
 
         raspSendData.crc = calculateCRC((uint8_t*)&raspSendData, sizeof(RaspSendData) - 1);
-
-        Serial.print("Sending data: stat=");
-        Serial.print(raspSendData.stat);
-        Serial.print(", loc_x=");
-        Serial.print(raspSendData.loc_x);
-        Serial.print(", loc_z=");
-        Serial.println(raspSendData.loc_z);
 
         RaspHwSerial.write((const uint8_t*)&raspSendData, sizeof(RaspSendData));
 
