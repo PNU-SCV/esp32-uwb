@@ -4,15 +4,15 @@
 #include "rtls.h"
 #include "rasp.h"
 #include "stm32.h"
+#include "utils.h"
+
+/*********************************************************************************************************************************************************
+ * 														Extern Variables
+ *********************************************************************************************************************************************************/
 
 extern TaskHandle_t RTLS_task_handle;
 extern TaskHandle_t rasp_recv_task_handle;
 extern TaskHandle_t rasp_send_task_handle;
-
-HardwareSerial Stm32HwSerial(1);
-
-STM32RecvData stm32RecieveData = {0};
-STM32SendData stm32SendData = {0};
 
 extern SemaphoreHandle_t stm32_recv_data_semaphore;
 extern SemaphoreHandle_t rasp_recv_data_semaphore;
@@ -23,9 +23,22 @@ extern float tagAngle;
 extern Point2D destPoint;
 extern uint8_t raspCmd;
 
+
+/*********************************************************************************************************************************************************
+ * 														Global Variables
+ *********************************************************************************************************************************************************/
+
+HardwareSerial Stm32HwSerial(1);
+
+STM32RecvData stm32RecieveData = {0};
+STM32SendData stm32SendData = {0};
+
+
 uint8_t stm32Status = 0;
 
-float getAngle(Point2D target, Point2D cur);
+/*********************************************************************************************************************************************************
+ * 														    FreeRTOS Tasks
+ *********************************************************************************************************************************************************/
 
 void stm32RecvTask(void *parameter) 
 {
@@ -84,9 +97,10 @@ void stm32SendTask(void *parameter)
 
     Serial.println("stm32SendTask");
 
-    if (tag_position == dest_point || rasp_cmd == CMD_STOP || stm32_status == 0x00) 
+    if (tag_position == dest_point || rasp_cmd == CMD_STOP || stm32_status != 0x00) 
     {
       stm32SendData.cmd = CMD_STOP;
+      Serial.println("STOP");
     }
     else if (std::abs(tag_angle - getAngle(dest_point, tag_position)) < ANGLE_EPSILON) 
     {
@@ -114,12 +128,4 @@ void stm32SendTask(void *parameter)
     /* Posting to RTLS Task */
     xTaskNotifyGive(rasp_send_task_handle);
   }
-}
-
-float getAngle(Point2D target, Point2D cur) 
-{
-  float dx = target.x - cur.x;
-  float dz = target.z - cur.z;
-
-  return ((int)(std::atan2(dz, dx) * 180 / PI) + 360 ) % 360;
 }
