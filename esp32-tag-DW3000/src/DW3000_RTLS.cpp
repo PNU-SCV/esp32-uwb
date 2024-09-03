@@ -1,7 +1,20 @@
 #include "DW3000_RTLS.h"
 
+/*********************************************************************************************************************************************************
+ * 														Extern Variables
+ *********************************************************************************************************************************************************/
 
-// Anchor Configuration
+extern dwt_txconfig_t txconfig_options;
+
+extern TaskHandle_t rasp_recv_task_handle;
+extern TaskHandle_t rasp_send_task_handle;
+extern TaskHandle_t stm32_send_task_handle;
+extern TaskHandle_t stm32_recv_task_handle;
+
+/*********************************************************************************************************************************************************
+ * 														Global Variables
+ *********************************************************************************************************************************************************/
+
 double distance_A, distance_B, distance_C, distance_D;
 double INF_distance = 1024.0;
 
@@ -27,17 +40,6 @@ TWR_t twr[ANCHOR_COUNT + 1] = {
     {tx_poll_msg_D, rx_resp_msg_D, &distance_D, &anchor_D, false},
     {NULL, NULL, &INF_distance, NULL, false}
 };
-
-/*********************************************************************************************************************************************************
- * 														Extern Variables
- *********************************************************************************************************************************************************/
-
-extern dwt_txconfig_t txconfig_options;
-
-extern TaskHandle_t rasp_recv_task_handle;
-extern TaskHandle_t rasp_send_task_handle;
-extern TaskHandle_t stm32_send_task_handle;
-extern TaskHandle_t stm32_recv_task_handle;
 
 /*********************************************************************************************************************************************************
  * 														    Constructors
@@ -190,13 +192,13 @@ void DW3000_RTLS::setLocation() {
     }
 
     if (min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) {
-        // Serial.print(min_1_idx);
-        // Serial.print(": ");
-        // Serial.println(*twr[min_1_idx].distance);
+        Serial.print(min_1_idx);
+        Serial.print(": ");
+        Serial.println(*twr[min_1_idx].distance);
 
-        // Serial.print(min_2_idx);
-        // Serial.print(": ");
-        // Serial.println(*twr[min_2_idx].distance);
+        Serial.print(min_2_idx);
+        Serial.print(": ");
+        Serial.println(*twr[min_2_idx].distance);
 
         Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
         float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
