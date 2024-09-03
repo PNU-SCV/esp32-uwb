@@ -1,4 +1,14 @@
+#include <Arduino.h>
+#include <cmath>
 #include "utils.h"
+
+float getAngle(Point2D target, Point2D cur) 
+{
+  float dx = target.x - cur.x;
+  float dz = target.z - cur.z;
+
+  return ((int)(std::atan2(dz, dx) * 180 / PI) + 360 ) % 360;
+}
 
 uint8_t calculateCRC(const uint8_t* data, size_t length) {
     uint8_t crc = 0x00; // 초기 CRC 값
