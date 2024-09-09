@@ -35,7 +35,7 @@ RaspSendData raspSendData;
 
 float tagAngle = 0.0;
 uint8_t raspCmd = 0x00;
-Point2D destPoint = {3.0, 2.0};
+Point2D destPoint = {1.4, 1.0};
 
 // 수신 태스크
 void raspRecvTask(void *parameter) 
@@ -65,24 +65,27 @@ void raspRecvTask(void *parameter)
                 xSemaphoreGive(rasp_recv_data_semaphore);
 
                 Serial.print("RASP : ");
-                Serial.print(raspCmd);
+                Serial.print(raspRecieveData.cmd);
                 Serial.print(", ");
-                Serial.print(destPoint.x);
+                Serial.print(raspRecieveData.dest_x);
                 Serial.print(", ");
-                Serial.print(destPoint.z);
+                Serial.print(raspRecieveData.dest_z);
                 Serial.print(", ");
-                Serial.println(tagAngle);
+                Serial.println(raspRecieveData.angle);
             } 
             else 
             {
                 Serial.println("CRC mismatch, data ignored");
+
+                while (RaspHwSerial.available()) 
+                {
+                    RaspHwSerial.read(); 
+                }
             }
         }
     }
 }
 
-
-// 송신 태스크
 void raspSendTask(void *parameter) 
 {
     uint8_t stm32_status;
@@ -100,6 +103,7 @@ void raspSendTask(void *parameter)
         Serial.println("raspSendTask");
 
         raspSendData.stat = stm32_status;
+        raspSendData.stat = 0;
         raspSendData.loc_x = tagPosition.x;
         raspSendData.loc_z = tagPosition.z;
 
