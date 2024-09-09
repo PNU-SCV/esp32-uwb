@@ -7,7 +7,12 @@ float getAngle(Point2D target, Point2D cur)
   float dx = target.x - cur.x;
   float dz = target.z - cur.z;
 
-  return ((int)(std::atan2(dz, dx) * 180 / PI) + 360 ) % 360;
+  return ((int)(std::atan2(dz, dx) * 180.0f / PI) + 360 ) % 360;
+}
+
+float getAngleDiff(float dest_angle, float tag_angle)
+{
+    return (int)(dest_angle - tag_angle + 360) % 360;
 }
 
 uint8_t calculateCRC(const uint8_t* data, size_t length) {
