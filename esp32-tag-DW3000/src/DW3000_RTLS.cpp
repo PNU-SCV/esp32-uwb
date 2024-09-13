@@ -18,26 +18,18 @@ extern TaskHandle_t stm32_recv_task_handle;
 double distance_A, distance_B, distance_C, distance_D;
 double INF_distance = 1024.0;
 
-Point3D anchor_A = {1.5, 0.0, 0.0};
-Point3D anchor_B = {3.0, 0.0, 0.0};
-Point3D anchor_C = {0.0, 0.0, 0.0};
-Point3D anchor_D = {4.5, 0.0, 0.0};
+Point3D anchor_A = {1.5, 1.5, 0.0};
+Point3D anchor_B = {3.0, 1.5, 0.0};
 
 uint8_t tx_poll_msg_A[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'A', 'T', 'A', 0xE0, 0, 0};
 uint8_t tx_poll_msg_B[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'B', 'T', 'A', 0xE0, 0, 0};
-uint8_t tx_poll_msg_C[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'C', 'T', 'A', 0xE0, 0, 0};
-uint8_t tx_poll_msg_D[12] = {0x41, 0x88, 0, 0xCA, 0xDE, 'R', 'D', 'T', 'A', 0xE0, 0, 0};
 
 uint8_t rx_resp_msg_A[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'A', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 uint8_t rx_resp_msg_B[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'B', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-uint8_t rx_resp_msg_C[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'C', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-uint8_t rx_resp_msg_D[20] = {0x41, 0x88, 0, 0xCA, 0xDE, 'T', 'A', 'R', 'D', 0xE1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 TWR_t twr[ANCHOR_COUNT + 1] = {
     {tx_poll_msg_A, rx_resp_msg_A, &distance_A, &anchor_A, false},
     {tx_poll_msg_B, rx_resp_msg_B, &distance_B, &anchor_B, false},
-    {tx_poll_msg_C, rx_resp_msg_C, &distance_C, &anchor_C, false},
-    {tx_poll_msg_D, rx_resp_msg_D, &distance_D, &anchor_D, false},
     {NULL, NULL, &INF_distance, NULL, false}
 };
 
@@ -146,7 +138,7 @@ void DW3000_RTLS::calculateDistance(uint8_t* buffer, double *distance) {
 
     double tof = ((rtd_init - rtd_resp * (1 - clockOffsetRatio)) / 2.0) * DWT_TIME_UNITS;
     double dist_diff = tof * SPEED_OF_LIGHT - *distance;
-    *distance = *distance + dist_diff * 0.1;
+    *distance = *distance + dist_diff * LOC_UPDATE_RATE;
 }
 
 void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2) {
@@ -155,8 +147,14 @@ void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float di
         std::swap(distance_1, distance_2);
     }
 
-    float dx = (pow((anchor_2.x - anchor_1.x), 2) + pow(distance_1, 2) - pow(distance_2, 2)) / (2 * (anchor_2.x - anchor_1.x));
-    float dz = sqrt(pow(distance_1, 2) - pow(dx, 2));
+    float height_diff_1 = abs(anchor_1.y); 
+    float height_diff_2 = abs(anchor_2.y); 
+
+    float horizontal_distance_1 = sqrt(pow(distance_1, 2) - pow(height_diff_1, 2));
+    float horizontal_distance_2 = sqrt(pow(distance_2, 2) - pow(height_diff_2, 2));
+
+    float dx = (pow((anchor_2.x - anchor_1.x), 2) + pow(horizontal_distance_1, 2) - pow(horizontal_distance_2, 2)) / (2 * (anchor_2.x - anchor_1.x));
+    float dz = sqrt(pow(horizontal_distance_1, 2) - pow(dx, 2));
 
     float x = anchor_1.x + dx;
     float z = anchor_1.z + dz;
@@ -178,16 +176,29 @@ void DW3000_RTLS::setLocation() {
 
     min_1_idx = min_2_idx = ANCHOR_COUNT;
 
-    for (int i = 1; i < ANCHOR_COUNT; i++) {
-        if (!twr[i - 1].is_updated || !twr[i].is_updated || twr[i - 1].anchor_loc->z != twr[i].anchor_loc->z) continue;
+    for (int i = 0; i < ANCHOR_COUNT; i++) {
+        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT && twr[i].anchor_loc->z > tag_position.z) {
+            break;
+        }
 
-        double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
-        double cur_sum_distance = *twr[i - 1].distance + *twr[i].distance;
+        if(!twr[i].is_updated) continue;
 
-        if (cur_sum_distance < min_sum_distance) {
-            min_sum_distance = cur_sum_distance;
-            min_1_idx = i - 1;
-            min_2_idx = i;
+        for(int j = i + 1; j < ANCHOR_COUNT && twr[i].anchor_loc->z == twr[j].anchor_loc->z; ++j) {
+            if(!twr[j].is_updated) continue;
+
+            double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
+            double cur_sum_distance = *twr[i - 1].distance + *twr[i].distance;
+
+            if (cur_sum_distance < min_sum_distance) {
+                min_sum_distance = cur_sum_distance;
+                min_1_idx = i - 1;
+                min_2_idx = i;
+
+                Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
+                float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
+
+                calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
+            }
         }
     }
 
@@ -200,15 +211,15 @@ void DW3000_RTLS::setLocation() {
         Serial.print(": ");
         Serial.println(*twr[min_2_idx].distance);
 
-        Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
-        float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
+        // Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
+        // float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
 
-        calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
+        // calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
     }
 }
 
 void DW3000_RTLS::RTLSTaskPrologue() {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(100));
 }
 
 void DW3000_RTLS::RTLSTaskEpilogue() {
