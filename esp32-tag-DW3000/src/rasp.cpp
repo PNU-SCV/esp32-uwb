@@ -37,7 +37,6 @@ float tagAngle = 0.0;
 uint8_t raspCmd = 0x00;
 Point2D destPoint = {1.4, 1.0};
 
-// 수신 태스크
 void raspRecvTask(void *parameter) 
 {
     while (true) 
@@ -103,7 +102,6 @@ void raspSendTask(void *parameter)
         Serial.println("raspSendTask");
 
         raspSendData.stat = stm32_status;
-        raspSendData.stat = 0;
         raspSendData.loc_x = tagPosition.x;
         raspSendData.loc_z = tagPosition.z;
 
