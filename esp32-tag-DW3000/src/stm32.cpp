@@ -45,7 +45,6 @@ void stm32RecvTask(void *parameter)
 {
   while (true) 
   {
-    /* Task pending (Rasp Recv 에서 이 태스크를 트리거할 때까지 대기) */
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
     Serial.println("stm32RecvTask");
@@ -56,6 +55,7 @@ void stm32RecvTask(void *parameter)
 
       if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
+      stm32RecieveData.status = 0;
       stm32Status = stm32RecieveData.status;
 
       xSemaphoreGive(stm32_recv_data_semaphore);
@@ -66,7 +66,6 @@ void stm32RecvTask(void *parameter)
   }
 }
 
-/* 송신 태스크 */
 void stm32SendTask(void *parameter) 
 {
   uint8_t stm32_status, rasp_cmd;
@@ -77,7 +76,6 @@ void stm32SendTask(void *parameter)
 
   while (true) 
   {
-    /* Task pending (raspRecvTask에서 이 태스크를 트리거할 때까지 대기) */
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
     if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
@@ -104,21 +102,22 @@ void stm32SendTask(void *parameter)
       stm32SendData.cmd = CMD_STOP;
       Serial.println("STOP");
     }
-    else if (angle_diff < ANGLE_EPSILON || (360 - angle_diff) < ANGLE_EPSILON) 
+    else if (min(angle_diff, 360.0f - angle_diff) < ANGLE_EPSILON) 
     {
-      stm32SendData.cmd = CMD_FORWARD;
+      stm32SendData.cmd = CMD_FORWARD; 
       Serial.println("FORWARD");
     }
-    else if (angle_diff < 180) 
+    else if (angle_diff <= 180.0f)
     {
       stm32SendData.cmd = CMD_CLOCKWISE_ROTATE;
-      Serial.println("CLOCK");
+      Serial.println("CLOCKWISE ROTATE");
     }
     else 
     {
       stm32SendData.cmd = CMD_COUNTERCLOCKWISE_ROTATE;
-      Serial.println("ANTT-CLOCK");
+      Serial.println("COUNTERCLOCKWISE ROTATE");
     }
+
 
     //if(xSemaphoreTake(stm32_send_flag_semaphore, 0) == pdFALSE) continue;
 
@@ -128,10 +127,8 @@ void stm32SendTask(void *parameter)
     // if(tag_position.z < 1) stm32_send_data.cmd = CMD_FORWARD;
     // else stm32_send_data.cmd = CMD_STOP;
 
-    /* Send CMD to STM32 */
     Stm32HwSerial.write((const uint8_t*)&stm32SendData, sizeof(STM32SendData));
 
-    /* Posting to RTLS Task */
     xTaskNotifyGive(rasp_send_task_handle);
   }
 }
