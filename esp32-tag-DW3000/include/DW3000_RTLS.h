@@ -27,9 +27,14 @@
 #define POLL_MSG_SIZE (uint8_t) 12
 #define RESP_MSG_SIZE (uint8_t) 20
 
+#define FRAME_TYPE 0x41
+#define FRAME_VERSION 0x88
+
 #define DIST_UPDATE_RATE 0.5
 
 #define ANCHOR_COUNT 4
+
+#define LOC_UPDATE_RATE 0.3
 
 
 struct TWR_t{
@@ -96,7 +101,7 @@ public:
 
     void RTLSSetup();
 
-    bool pollAndRecieve(uint8_t* poll_msg, uint8_t* resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double* distance);
+    bool pollAndReceive(uint8_t* poll_msg, uint8_t* resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double* distance);
 
     void calculateDistance(uint8_t* buffer, double* distance);
     
