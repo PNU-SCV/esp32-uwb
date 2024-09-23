@@ -4,15 +4,15 @@
 #include <cstdint>
 #include <cmath>
 
-#define POINT_EPSILON 1e-1
-#define ANGLE_EPSILON 1e-3
+#define POINT_EPSILON 2e-1
+#define ANGLE_EPSILON 20.0f
 
 struct Point2D {
     float x;
     float z;
 
     bool operator == (const Point2D& p) {
-        return std::abs(x - p.x) < POINT_EPSILON && std::abs(z - p.z) < POINT_EPSILON;
+        return pow(pow(x - p.x, 2.0) + pow(z - p.z, 2.0), 0.5) < POINT_EPSILON;
     }
 };
 
