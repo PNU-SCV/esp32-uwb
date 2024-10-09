@@ -21,10 +21,10 @@ double INF_distance = 1024.0;
 // X : 1.0 ~ 2.4
 // Z : 0.0 ~ 5.4
 
-Point3D anchor_A = {1.0, 1.0, 0.0};
-Point3D anchor_B = {1.0, 1.0, 5.4};
-Point3D anchor_C = {2.5, 1.0, 5.4};
-Point3D anchor_D = {2.5, 1.0, 0.0};
+Point3D anchor_A = {0.0, 2.0, 0.0};
+Point3D anchor_B = {4.8, 2.0, 0.0};
+Point3D anchor_C = {0.0, 2.0, 3.2};
+Point3D anchor_D = {4.8, 2.0, 3.2};
 
 uint8_t tx_poll_msg_A[12] = {FRAME_TYPE, FRAME_VERSION, 0, 0xCA, 0xDE, 'R', 'A', 'T', 'A', 0xE0, 0, 0};
 uint8_t tx_poll_msg_B[12] = {FRAME_TYPE, FRAME_VERSION, 0, 0xCA, 0xDE, 'R', 'B', 'T', 'A', 0xE0, 0, 0};
@@ -197,18 +197,12 @@ void DW3000_RTLS::setLocation() {
     min_1_idx = min_2_idx = ANCHOR_COUNT;
 
     for (int i = 0; i < ANCHOR_COUNT; i++) {
-        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT && twr[i].anchor_loc->z > tag_position.z) {
-            break;
-        }
+        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT && twr[i].anchor_loc->z > tag_position.z + POINT_EPSILON) break;
 
         if(!twr[i].is_updated) continue;
 
-        
-
         for(int j = i + 1; j < ANCHOR_COUNT && twr[i].anchor_loc->z == twr[j].anchor_loc->z; ++j) {
-            if(!twr[j].is_updated) continue;
-
-            
+            if(!twr[j].is_updated) continue;            
             
             double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
             double cur_sum_distance = *twr[j].distance + *twr[i].distance;
