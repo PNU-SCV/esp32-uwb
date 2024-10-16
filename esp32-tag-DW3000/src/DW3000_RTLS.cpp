@@ -18,13 +18,10 @@ extern TaskHandle_t stm32_recv_task_handle;
 double distance_A, distance_B, distance_C, distance_D;
 double INF_distance = 1024.0;
 
-// X : 1.0 ~ 2.4
-// Z : 0.0 ~ 5.4
-
-Point3D anchor_A = {0.0, 2.0, 0.0};
-Point3D anchor_B = {4.8, 2.0, 0.0};
-Point3D anchor_C = {0.0, 2.0, 3.2};
-Point3D anchor_D = {4.8, 2.0, 3.2};
+Point3D anchor_A = {0.0, 2.0, -0.4};
+Point3D anchor_B = {4.8, 2.0, -0.4};
+Point3D anchor_C = {0.0, 2.0, 2.8};
+Point3D anchor_D = {4.8, 2.0, 2.8};
 
 uint8_t tx_poll_msg_A[12] = {FRAME_TYPE, FRAME_VERSION, 0, 0xCA, 0xDE, 'R', 'A', 'T', 'A', 0xE0, 0, 0};
 uint8_t tx_poll_msg_B[12] = {FRAME_TYPE, FRAME_VERSION, 0, 0xCA, 0xDE, 'R', 'B', 'T', 'A', 0xE0, 0, 0};
@@ -191,13 +188,16 @@ void DW3000_RTLS::setLocation() {
     int min_1_idx, min_2_idx;
 
     for (int i = 0; i < ANCHOR_COUNT; ++i) {
-        twr[i].is_updated = pollAndReceive(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+        if(twr[i].anchor_loc->z + POINT_EPSILON > tag_position.z || abs(twr[i].anchor_loc->x - tag_position.x) > DELTA_X) 
+            twr[i].is_updated = false;
+        else 
+            twr[i].is_updated = pollAndReceive(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
     }
 
     min_1_idx = min_2_idx = ANCHOR_COUNT;
 
     for (int i = 0; i < ANCHOR_COUNT; i++) {
-        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT && twr[i].anchor_loc->z > tag_position.z + POINT_EPSILON) break;
+        if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT && twr[i].anchor_loc->z + POINT_EPSILON > tag_position.z) break;
 
         if(!twr[i].is_updated) continue;
 
@@ -235,6 +235,12 @@ void DW3000_RTLS::setLocation() {
         // calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
     }
 }
+
+
+/*********************************************************************************************************************************************************
+ * 														    Task Wrapper
+ *********************************************************************************************************************************************************/
+
 
 void DW3000_RTLS::RTLSTaskPrologue() {
     vTaskDelay(pdMS_TO_TICKS(100));
