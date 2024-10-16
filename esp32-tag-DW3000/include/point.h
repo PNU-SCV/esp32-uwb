@@ -6,6 +6,7 @@
 
 #define POINT_EPSILON 2e-1
 #define ANGLE_EPSILON 20.0f
+#define DELTA_X 30.0
 
 struct Point2D {
     float x;
