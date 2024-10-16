@@ -41,6 +41,7 @@ uint8_t stm32Status = 0;
  * 														    FreeRTOS Tasks
  *********************************************************************************************************************************************************/
 
+// ISR Callback Function: Recv from STM32 by HWSerial(1)
 void stm32RecvTask(void *parameter) 
 {
   while (true) 
@@ -66,6 +67,8 @@ void stm32RecvTask(void *parameter)
   }
 }
 
+// FreeRTOS Task
+// Pending for: RTLSTask, Posting for raspSendTask
 void stm32SendTask(void *parameter) 
 {
   uint8_t stm32_status, rasp_cmd;
@@ -104,7 +107,7 @@ void stm32SendTask(void *parameter)
     }
     else if (min(angle_diff, 360.0f - angle_diff) < ANGLE_EPSILON) 
     {
-      stm32SendData.cmd = CMD_FORWARD; 
+      stm32SendData.cmd = CMD_FORWARD;
       Serial.println("FORWARD");
     }
     else if (angle_diff <= 180.0f)
@@ -117,7 +120,6 @@ void stm32SendTask(void *parameter)
       stm32SendData.cmd = CMD_COUNTERCLOCKWISE_ROTATE;
       Serial.println("COUNTERCLOCKWISE ROTATE");
     }
-
 
     //if(xSemaphoreTake(stm32_send_flag_semaphore, 0) == pdFALSE) continue;
 
