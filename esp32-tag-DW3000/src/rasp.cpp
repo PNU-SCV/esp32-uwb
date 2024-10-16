@@ -37,6 +37,7 @@ float tagAngle = 0.0;
 uint8_t raspCmd = 0x00;
 Point2D destPoint = {1.4, 1.0};
 
+// ISR Callback Function: Recv from Rasp by HWSerial(2)
 void raspRecvTask(void *parameter) 
 {
     while (true) 
@@ -85,6 +86,8 @@ void raspRecvTask(void *parameter)
     }
 }
 
+// FreeRTOS Task
+// Pending for: STM32SendTask, Posting for RTLSTask
 void raspSendTask(void *parameter) 
 {
     uint8_t stm32_status;
