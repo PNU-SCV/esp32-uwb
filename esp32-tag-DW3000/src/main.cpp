@@ -16,23 +16,6 @@
 
 extern uint32_t last_synced_time;
 
-/* Default communication configuration. We use default non-STS DW mode. */
-static dwt_config_t config = {
-    5,                  /* Channel number. */
-    DWT_PLEN_128,       /* Preamble length. Used in TX only. */
-    DWT_PAC8,           /* Preamble acquisition chunk size. Used in RX only. */
-    9,                  /* TX preamble code. Used in TX only. */
-    9,                  /* RX preamble code. Used in RX only. */
-    1,                  /* 0 to use standard 8 symbol SFD, 1 to use non-standard 8 symbol, 2 for non-standard 16 symbol SFD and 3 for 4z 8 symbol SDF type */
-    DWT_BR_6M8,         /* Data rate. */
-    DWT_PHRMODE_STD,    /* PHY header mode. */
-    DWT_PHRRATE_STD,    /* PHY header rate. */
-    (128 + 1 + 8 - 8),  /* SFD timeout (preamble length + 1 + SFD length - PAC size). Used in RX only. */
-    DWT_STS_MODE_OFF,   /* STS Off */
-    DWT_STS_LEN_128,    /* Ignore value when STS is disabled */
-    DWT_PDOA_M0         /* PDOA mode off */
-};
-
 extern dwt_txconfig_t txconfig_options;
 
 extern HardwareSerial RaspHwSerial;
@@ -90,13 +73,10 @@ void RTLSTaskWrapper(void *parameter)
 {
     while(true) 
     {
-        /* RTLS Task Prologue */
         dw3000_rtls.RTLSTaskPrologue();
 
-        /* RTLS Task */
         dw3000_rtls.setLocation();
 
-        /* RTLS Task Epilogue */
         dw3000_rtls.RTLSTaskEpilogue();
 
         tagPosition = dw3000_rtls.getTagPosition();
