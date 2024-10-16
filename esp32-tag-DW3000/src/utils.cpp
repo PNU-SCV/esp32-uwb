@@ -2,6 +2,7 @@
 #include <cmath>
 #include "utils.h"
 
+// return : Angle between target & cur vector (clockwise with cur vector)
 float getAngle(Point2D target, Point2D cur) 
 {
     float dx = target.x - cur.x;
@@ -11,6 +12,7 @@ float getAngle(Point2D target, Point2D cur)
     angle = fmodf(angle + 360.0f, 360.0f);
     return angle;
 }
+
 
 float getAngleDiff(float dest_angle, float tag_angle)
 {
