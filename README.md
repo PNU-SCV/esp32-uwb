@@ -68,11 +68,11 @@ The system runs on a dual-core ESP32 where tasks are distributed across **Core 0
 
 
 
-## License
+## 5. License
 
 This project is licensed under the Apache 2.0 License - see the [LICENSE](LICENSE) file for details.
 
-## Acknowledgements
+## 6. Acknowledgements
 
 This project includes code from the DW3000 library developed by Yannick SILVA.
 
