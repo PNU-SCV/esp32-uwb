@@ -1,12 +1,10 @@
 #ifndef DW3000_RTLS_H
 #define DW3000_RTLS_H
 
-#include <Arduino.h>
 #include <algorithm>
 #include <queue>
 #include <vector>
 #include "dw3000.h"
-#include "rtls.h"
 #include "point.h"
 
 #define PIN_RST 27

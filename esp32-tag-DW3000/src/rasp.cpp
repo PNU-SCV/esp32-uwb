@@ -1,8 +1,11 @@
-#include <Arduino.h>
-#include <HardwareSerial.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/semphr.h"
+#include "driver/uart.h"
+#include "esp_log.h"
 #include "rasp.h"
 #include "utils.h"
+#include <string.h>
 
 /*********************************************************************************************************************************************************
  * 														Extern Variables
@@ -28,7 +31,8 @@ extern int8_t stm32Status;
  * 														Global Variables
  *********************************************************************************************************************************************************/
 
-HardwareSerial RaspHwSerial(2);
+static const int RASP_UART_NUM = UART_NUM_2;  // UART number for Raspberry Pi communication
+static const int BUFFER_SIZE = 1024;
 
 RaspRecvData raspRecieveData;
 RaspSendData raspSendData;
@@ -37,24 +41,38 @@ float tagAngle = 0.0;
 uint8_t raspCmd = 0x00;
 Point2D destPoint = {1.4, 1.0};
 
-// ISR Callback Function: Recv from Rasp by HWSerial(2)
+// Logging tag
+static const char* TAG = "RASP";
+
+/*********************************************************************************************************************************************************
+ * 														Tasks
+ *********************************************************************************************************************************************************/
+
+// ISR Callback Function: Recv from Rasp via UART
 void raspRecvTask(void *parameter) 
 {
+    uint8_t buffer[BUFFER_SIZE];
+
     while (true) 
     {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        Serial.println("raspRecvTask");
+        ESP_LOGI(TAG, "raspRecvTask");
 
-        if (RaspHwSerial.available() >= sizeof(RaspRecvData)) 
+        int length = 0;
+        ESP_ERROR_CHECK(uart_get_buffered_data_len(RASP_UART_NUM, (size_t*)&length));
+
+        if (length >= sizeof(RaspRecvData)) 
         {
-            RaspHwSerial.readBytes((char*)&raspRecieveData, sizeof(RaspRecvData));
+            uart_read_bytes(RASP_UART_NUM, buffer, sizeof(RaspRecvData), portMAX_DELAY);
+            memcpy(&raspRecieveData, buffer, sizeof(RaspRecvData));
+
             uint8_t receivedCRC = raspRecieveData.crc;
             uint8_t calculatedCRC = calculateCRC((uint8_t*)&raspRecieveData, sizeof(RaspRecvData) - 1);
 
             if (receivedCRC == calculatedCRC) 
             {
-                Serial.println("Data received from Raspberry Pi");
+                ESP_LOGI(TAG, "Data received from Raspberry Pi");
 
                 if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
@@ -64,30 +82,22 @@ void raspRecvTask(void *parameter)
 
                 xSemaphoreGive(rasp_recv_data_semaphore);
 
-                Serial.print("RASP : ");
-                Serial.print(raspRecieveData.cmd);
-                Serial.print(", ");
-                Serial.print(raspRecieveData.dest_x);
-                Serial.print(", ");
-                Serial.print(raspRecieveData.dest_z);
-                Serial.print(", ");
-                Serial.println(raspRecieveData.angle);
+                ESP_LOGI(TAG, "RASP: Cmd=%d, X=%.2f, Z=%.2f, Angle=%.2f", 
+                         raspRecieveData.cmd, raspRecieveData.dest_x, 
+                         raspRecieveData.dest_z, raspRecieveData.angle);
             } 
             else 
             {
-                Serial.println("CRC mismatch, data ignored");
+                ESP_LOGW(TAG, "CRC mismatch, data ignored");
 
-                while (RaspHwSerial.available()) 
-                {
-                    RaspHwSerial.read(); 
-                }
+                // Flush the buffer in case of CRC mismatch
+                uart_flush(RASP_UART_NUM);
             }
         }
     }
 }
 
-// FreeRTOS Task
-// Pending for: STM32SendTask, Posting for RTLSTask
+// FreeRTOS Task: Sending data to Raspberry Pi
 void raspSendTask(void *parameter) 
 {
     uint8_t stm32_status;
@@ -102,18 +112,22 @@ void raspSendTask(void *parameter)
 
         xSemaphoreGive(stm32_recv_data_semaphore);
 
-        Serial.println("raspSendTask");
+        ESP_LOGI(TAG, "raspSendTask");
 
         raspSendData.stat = stm32_status;
         raspSendData.loc_x = tagPosition.x;
         raspSendData.loc_z = tagPosition.z;
 
+        // Calculate and assign CRC
         raspSendData.crc = calculateCRC((uint8_t*)&raspSendData, sizeof(RaspSendData) - 1);
 
-        RaspHwSerial.write((const uint8_t*)&raspSendData, sizeof(RaspSendData));
+        // Send data to Raspberry Pi
+        uart_write_bytes(RASP_UART_NUM, (const char*)&raspSendData, sizeof(RaspSendData));
 
-        Serial.println("Data sent to Raspberry Pi");
+        ESP_LOGI(TAG, "Data sent to Raspberry Pi: Status=%d, X=%.2f, Z=%.2f", 
+                 raspSendData.stat, raspSendData.loc_x, raspSendData.loc_z);
 
+        // Notify the RTLS task
         xTaskNotifyGive(RTLS_task_handle);
     }
 }
