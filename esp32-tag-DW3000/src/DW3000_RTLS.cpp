@@ -1,7 +1,12 @@
 #include "DW3000_RTLS.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+#include <algorithm>
+#include <cmath>
 
 /*********************************************************************************************************************************************************
- * 														Extern Variables
+ *                                                      Extern Variables
  *********************************************************************************************************************************************************/
 
 extern dwt_txconfig_t txconfig_options;
@@ -12,7 +17,7 @@ extern TaskHandle_t stm32_send_task_handle;
 extern TaskHandle_t stm32_recv_task_handle;
 
 /*********************************************************************************************************************************************************
- * 														Global Variables
+ *                                                      Global Variables
  *********************************************************************************************************************************************************/
 
 double distance_A, distance_B, distance_C, distance_D;
@@ -42,34 +47,38 @@ TWR_t twr[ANCHOR_COUNT + 1] = {
 };
 
 /*********************************************************************************************************************************************************
- * 														    Constructors
+ *                                                          Constructors
  *********************************************************************************************************************************************************/
 
 void DW3000_RTLS::RTLSSetup() {
     spiBegin(PIN_IRQ, PIN_RST);
     spiSelect(PIN_SS);
 
-    
-    delay(2);
+    // Delay for 2 milliseconds
+    vTaskDelay(pdMS_TO_TICKS(2));
 
     while (!dwt_checkidlerc()) 
     {
-        while (1)
-            ;
+        // Idle loop; consider adding a timeout for robustness
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
     if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR)
     {
-        while (1)
-            ;
+        ESP_LOGE("DW3000_RTLS", "DWT initialization failed");
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
     }
 
     dwt_setleds(DWT_LEDS_ENABLE | DWT_LEDS_INIT_BLINK);
 
     if (dwt_configure(&config)) 
     {
-        while (1)
-            ;
+        ESP_LOGE("DW3000_RTLS", "DWT configuration failed");
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
     }
 
     dwt_configuretxrf(&txconfig_options);
@@ -93,7 +102,7 @@ void DW3000_RTLS::RTLSSetup() {
 }
 
 /*********************************************************************************************************************************************************
- * 														    Public Methods
+ *                                                          Public Methods
  *********************************************************************************************************************************************************/
 
 bool DW3000_RTLS::pollAndReceive(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t poll_msg_size, uint8_t resp_msg_size, double *distance) {
@@ -106,9 +115,11 @@ bool DW3000_RTLS::pollAndReceive(uint8_t *poll_msg, uint8_t *resp_msg, uint8_t p
 
     dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
 
-    // vTaskDelay(pdMS_TO_TICKS(1));
-
-    while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR)));
+    // Wait for transmission and reception events
+    while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) & (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR))) {
+        // Optional delay to prevent tight loop
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
 
     frame_seq_nb = (frame_seq_nb + 1) % 256;
 
@@ -160,8 +171,8 @@ void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float di
         std::swap(distance_1, distance_2);
     }
 
-    float height_diff_1 = abs(anchor_1.y); 
-    float height_diff_2 = abs(anchor_2.y); 
+    float height_diff_1 = fabs(anchor_1.y); 
+    float height_diff_2 = fabs(anchor_2.y); 
 
     if (distance_1 < height_diff_1 || distance_2 < height_diff_2) return;
 
@@ -178,23 +189,19 @@ void DW3000_RTLS::calculatePosition(Point3D anchor_1, Point3D anchor_2, float di
 
     tag_position = {x, z};
 
-    Serial.print("X : ");
-    Serial.print(x);
-    Serial.print(", Z : ");
-    Serial.println(z);
+    ESP_LOGI("DW3000_RTLS", "Calculated Position - X: %.2f, Z: %.2f", x, z);
 }
 
 void DW3000_RTLS::setLocation() {
-    int min_1_idx, min_2_idx;
+    int min_1_idx = ANCHOR_COUNT, min_2_idx = ANCHOR_COUNT;
 
     for (int i = 0; i < ANCHOR_COUNT; ++i) {
-        if(twr[i].anchor_loc->z + POINT_EPSILON > tag_position.z || abs(twr[i].anchor_loc->x - tag_position.x) > DELTA_X) 
+        if(twr[i].anchor_loc->z + POINT_EPSILON > tag_position.z || fabs(twr[i].anchor_loc->x - tag_position.x) > DELTA_X) {
             twr[i].is_updated = false;
-        else 
+        } else {
             twr[i].is_updated = pollAndReceive(twr[i].tx_poll_msg, twr[i].rx_resp_msg, POLL_MSG_SIZE, RESP_MSG_SIZE, twr[i].distance);
+        }
     }
-
-    min_1_idx = min_2_idx = ANCHOR_COUNT;
 
     for (int i = 0; i < ANCHOR_COUNT; i++) {
         if(min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT && twr[i].anchor_loc->z + POINT_EPSILON > tag_position.z) break;
@@ -204,7 +211,8 @@ void DW3000_RTLS::setLocation() {
         for(int j = i + 1; j < ANCHOR_COUNT && twr[i].anchor_loc->z == twr[j].anchor_loc->z; ++j) {
             if(!twr[j].is_updated) continue;            
             
-            double min_sum_distance = *twr[min_1_idx].distance + *twr[min_2_idx].distance;
+            double min_sum_distance = (min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) ?
+                *twr[min_1_idx].distance + *twr[min_2_idx].distance : std::numeric_limits<double>::max();
             double cur_sum_distance = *twr[j].distance + *twr[i].distance;
 
             if (cur_sum_distance < min_sum_distance) {
@@ -212,8 +220,10 @@ void DW3000_RTLS::setLocation() {
                 min_1_idx = i;
                 min_2_idx = j;
 
-                Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
-                float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
+                Point3D anchor_1 = *twr[min_1_idx].anchor_loc;
+                Point3D anchor_2 = *twr[min_2_idx].anchor_loc;
+                float dist_1 = static_cast<float>(*twr[min_1_idx].distance);
+                float dist_2 = static_cast<float>(*twr[min_2_idx].distance);
 
                 calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
             }
@@ -221,26 +231,13 @@ void DW3000_RTLS::setLocation() {
     }
 
     if (min_1_idx != ANCHOR_COUNT && min_2_idx != ANCHOR_COUNT) {
-        Serial.print(min_1_idx);
-        Serial.print(": ");
-        Serial.println(*twr[min_1_idx].distance);
-
-        Serial.print(min_2_idx);
-        Serial.print(": ");
-        Serial.println(*twr[min_2_idx].distance);
-
-        // Point3D anchor_1 = *twr[min_1_idx].anchor_loc, anchor_2 = *twr[min_2_idx].anchor_loc;
-        // float dist_1 = (float)*twr[min_1_idx].distance, dist_2 = (float)*twr[min_2_idx].distance;
-
-        // calculatePosition(anchor_1, anchor_2, dist_1, dist_2);
+        ESP_LOGI("DW3000_RTLS", "Distances - Anchor %d: %.2f, Anchor %d: %.2f", min_1_idx, *twr[min_1_idx].distance, min_2_idx, *twr[min_2_idx].distance);
     }
 }
 
-
 /*********************************************************************************************************************************************************
- * 														    Task Wrapper
+ *                                                          Task Wrapper
  *********************************************************************************************************************************************************/
-
 
 void DW3000_RTLS::RTLSTaskPrologue() {
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -249,8 +246,4 @@ void DW3000_RTLS::RTLSTaskPrologue() {
 void DW3000_RTLS::RTLSTaskEpilogue() {
     xTaskNotifyGive(stm32_send_task_handle);
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-}
-
-Point2D DW3000_RTLS::getLocation() {
-    return tag_position;
 }
