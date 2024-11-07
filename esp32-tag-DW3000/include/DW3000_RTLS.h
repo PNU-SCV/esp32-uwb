@@ -89,9 +89,6 @@ private:
     uint32_t last_synced_time = 0;
 
 public:
-    uint32_t getCurrentTime() {
-        return millis() - last_synced_time;
-    }
 
     Point2D getTagPosition() {
         return tag_position;
@@ -106,9 +103,7 @@ public:
     void calculatePosition(Point3D anchor_1, Point3D anchor_2, float distance_1, float distance_2);
 
     void setLocation();
-
-    Point2D getLocation();
-
+    
     virtual void RTLSTaskPrologue();
 
     virtual void RTLSTaskEpilogue();
