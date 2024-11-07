@@ -7,11 +7,12 @@
 #include "rasp.h"
 #include "stm32.h"
 #include "utils.h"
+#include "main.h"
 #include <algorithm>
 #include <string.h>
 
 /*********************************************************************************************************************************************************
- * 														Extern Variables
+ *                                                      Extern Variables
  *********************************************************************************************************************************************************/
 
 extern TaskHandle_t RTLS_task_handle;
@@ -21,6 +22,8 @@ extern TaskHandle_t rasp_send_task_handle;
 extern SemaphoreHandle_t stm32_recv_data_semaphore;
 extern SemaphoreHandle_t rasp_recv_data_semaphore;
 
+extern QueueHandle_t stm32_uart_queue;
+
 extern Point2D tagPosition;
 extern float tagAngle;
 
@@ -28,10 +31,9 @@ extern Point2D destPoint;
 extern uint8_t raspCmd;
 
 /*********************************************************************************************************************************************************
- * 														Global Variables
+ *                                                      Global Variables
  *********************************************************************************************************************************************************/
 
-static const int STM32_UART_NUM = UART_NUM_1;  // UART number for STM32 communication
 static const int BUFFER_SIZE = 1024;
 
 STM32RecvData stm32RecieveData = {0};
@@ -43,61 +45,64 @@ uint8_t stm32Status = 0;
 static const char* TAG = "STM32";
 
 /*********************************************************************************************************************************************************
- * 														    FreeRTOS Tasks
+ *                                                          FreeRTOS Tasks
  *********************************************************************************************************************************************************/
 
-// ISR Callback Function: Recv from STM32 via UART
+// Task for receiving data from STM32 via UART
 void stm32RecvTask(void *parameter) 
 {
-    uint8_t buffer[BUFFER_SIZE];
+    QueueHandle_t stm32_uart_queue = (QueueHandle_t)parameter;
+    uart_event_t event;
+    uint8_t* buffer = (uint8_t*) malloc(BUFFER_SIZE);
 
     while (true) 
     {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        ESP_LOGI(TAG, "stm32RecvTask");
-
-        int length = 0;
-        ESP_ERROR_CHECK(uart_get_buffered_data_len(STM32_UART_NUM, (size_t*)&length));
-
-        if (length >= sizeof(STM32RecvData)) 
+        if (xQueueReceive(stm32_uart_queue, (void * )&event, (portTickType)portMAX_DELAY)) 
         {
-            uart_read_bytes(STM32_UART_NUM, buffer, sizeof(STM32RecvData), portMAX_DELAY);
-            memcpy(&stm32RecieveData, buffer, sizeof(STM32RecvData));
+            if (event.type == UART_DATA && event.size >= sizeof(STM32RecvData)) 
+            {
+                int len = uart_read_bytes(STM32_UART_NUM, buffer, event.size, portMAX_DELAY);
+                if (len >= sizeof(STM32RecvData)) 
+                {
+                    memcpy(&stm32RecieveData, buffer, sizeof(STM32RecvData));
 
-            if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+                    if (xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
-            stm32RecieveData.status = 0;
-            stm32Status = stm32RecieveData.status;
+                    stm32RecieveData.status = 0;
+                    stm32Status = stm32RecieveData.status;
+                    
 
-            xSemaphoreGive(stm32_recv_data_semaphore);
+                    xSemaphoreGive(stm32_recv_data_semaphore);
 
-            ESP_LOGI(TAG, "STM32 Recv: Status=%d", stm32RecieveData.status);
+                    ESP_LOGI(TAG, "STM32 Recv: Status=%d", stm32RecieveData.status);
+                }
+            }
         }
     }
+    free(buffer);
 }
 
-// FreeRTOS Task
-// Pending for: RTLSTask, Posting for raspSendTask
+// Task for sending data to STM32
 void stm32SendTask(void *parameter) 
 {
     uint8_t stm32_status, rasp_cmd;
     Point2D tag_position, dest_point;
     float tag_angle;
     float angle_diff;
+    bool flag = true;
 
     while (true) 
     {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        if(xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+        if (xSemaphoreTake(stm32_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
         stm32_status = stm32RecieveData.status;
         stm32_status = 0;
 
         xSemaphoreGive(stm32_recv_data_semaphore);
 
-        if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+        if (xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
         rasp_cmd = raspCmd;
         dest_point = destPoint;
@@ -133,6 +138,7 @@ void stm32SendTask(void *parameter)
         ESP_LOGI(TAG, "stm32SendTask");
 
         uart_write_bytes(STM32_UART_NUM, (const char*)&stm32SendData, sizeof(STM32SendData));
+        
 
         xTaskNotifyGive(rasp_send_task_handle);
     }
