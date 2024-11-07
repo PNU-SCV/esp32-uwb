@@ -4,11 +4,12 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "rasp.h"
+#include "main.h"
 #include "utils.h"
 #include <string.h>
 
 /*********************************************************************************************************************************************************
- * 														Extern Variables
+ *                                                      Extern Variables
  *********************************************************************************************************************************************************/
 
 const uint8_t raspStartByte = 0x02;
@@ -28,10 +29,9 @@ extern Point2D tagPosition;
 extern int8_t stm32Status;
 
 /*********************************************************************************************************************************************************
- * 														Global Variables
+ *                                                      Global Variables
  *********************************************************************************************************************************************************/
 
-static const int RASP_UART_NUM = UART_NUM_2;  // UART number for Raspberry Pi communication
 static const int BUFFER_SIZE = 1024;
 
 RaspRecvData raspRecieveData;
@@ -45,59 +45,64 @@ Point2D destPoint = {1.4, 1.0};
 static const char* TAG = "RASP";
 
 /*********************************************************************************************************************************************************
- * 														Tasks
+ *                                                      Tasks
  *********************************************************************************************************************************************************/
 
-// ISR Callback Function: Recv from Rasp via UART
+// Task for receiving data from Raspberry Pi via UART
 void raspRecvTask(void *parameter) 
 {
-    uint8_t buffer[BUFFER_SIZE];
+    QueueHandle_t rasp_uart_queue = (QueueHandle_t)parameter;
+    uart_event_t event;
+    uint8_t* buffer = (uint8_t*) malloc(BUFFER_SIZE);
 
     while (true) 
     {
-        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-        ESP_LOGI(TAG, "raspRecvTask");
-
-        int length = 0;
-        ESP_ERROR_CHECK(uart_get_buffered_data_len(RASP_UART_NUM, (size_t*)&length));
-
-        if (length >= sizeof(RaspRecvData)) 
+        if (xQueueReceive(rasp_uart_queue, (void * )&event, (portTickType)portMAX_DELAY)) 
         {
-            uart_read_bytes(RASP_UART_NUM, buffer, sizeof(RaspRecvData), portMAX_DELAY);
-            memcpy(&raspRecieveData, buffer, sizeof(RaspRecvData));
-
-            uint8_t receivedCRC = raspRecieveData.crc;
-            uint8_t calculatedCRC = calculateCRC((uint8_t*)&raspRecieveData, sizeof(RaspRecvData) - 1);
-
-            if (receivedCRC == calculatedCRC) 
+            if (event.type == UART_DATA && event.size >= sizeof(RaspRecvData)) 
             {
-                ESP_LOGI(TAG, "Data received from Raspberry Pi");
+                int len = uart_read_bytes(RASP_UART_NUM, buffer, event.size, portMAX_DELAY);
+                if (len >= sizeof(RaspRecvData)) 
+                {
+                    memcpy(&raspRecieveData, buffer, sizeof(RaspRecvData));
 
-                if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
+                    uint8_t receivedCRC = raspRecieveData.crc;
+                    uint8_t calculatedCRC = calculateCRC((uint8_t*)&raspRecieveData, sizeof(RaspRecvData) - 1);
 
-                destPoint = {raspRecieveData.dest_x, raspRecieveData.dest_z};
-                tagAngle = raspRecieveData.angle;
-                raspCmd = raspRecieveData.cmd;
+                    if (receivedCRC == calculatedCRC) 
+                    {
+                        ESP_LOGI(TAG, "Data received from Raspberry Pi");
 
-                xSemaphoreGive(rasp_recv_data_semaphore);
+                        if(xSemaphoreTake(rasp_recv_data_semaphore, portMAX_DELAY) == pdFALSE) continue;
 
-                ESP_LOGI(TAG, "RASP: Cmd=%d, X=%.2f, Z=%.2f, Angle=%.2f", 
-                         raspRecieveData.cmd, raspRecieveData.dest_x, 
-                         raspRecieveData.dest_z, raspRecieveData.angle);
-            } 
-            else 
-            {
-                ESP_LOGW(TAG, "CRC mismatch, data ignored");
+                        destPoint = {raspRecieveData.dest_x, raspRecieveData.dest_z};
+                        tagAngle = raspRecieveData.angle;
+                        raspCmd = raspRecieveData.cmd;
 
-                // Flush the buffer in case of CRC mismatch
-                uart_flush(RASP_UART_NUM);
+                        xSemaphoreGive(rasp_recv_data_semaphore);
+
+                        ESP_LOGI(TAG, "RASP: Cmd=%d, X=%.2f, Z=%.2f, Angle=%.2f", 
+                                raspRecieveData.cmd, raspRecieveData.dest_x, 
+                                raspRecieveData.dest_z, raspRecieveData.angle);
+
+                        // Notify stm32SendTask to process the new data
+                        xTaskNotifyGive(stm32_send_task_handle);
+                    } 
+                    else 
+                    {
+                        ESP_LOGW(TAG, "CRC mismatch, data ignored");
+
+                        // Flush the buffer in case of CRC mismatch
+                        uart_flush(RASP_UART_NUM);
+                    }
+                }
             }
         }
     }
+    free(buffer);
 }
 
-// FreeRTOS Task: Sending data to Raspberry Pi
+// Task for sending data to Raspberry Pi
 void raspSendTask(void *parameter) 
 {
     uint8_t stm32_status;
@@ -125,7 +130,7 @@ void raspSendTask(void *parameter)
         uart_write_bytes(RASP_UART_NUM, (const char*)&raspSendData, sizeof(RaspSendData));
 
         ESP_LOGI(TAG, "Data sent to Raspberry Pi: Status=%d, X=%.2f, Z=%.2f", 
-                 raspSendData.stat, raspSendData.loc_x, raspSendData.loc_z);
+                raspSendData.stat, raspSendData.loc_x, raspSendData.loc_z);
 
         // Notify the RTLS task
         xTaskNotifyGive(RTLS_task_handle);
