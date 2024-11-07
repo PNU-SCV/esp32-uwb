@@ -8,16 +8,6 @@
  * Original source: https://nconcepts.fr
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
  */
 
 #include "main.h"
@@ -32,7 +22,7 @@
 #include "stm32.h"
 
 /*********************************************************************************************************************************************************
- * 														Extern Variables
+ *                                                      Extern Variables
  *********************************************************************************************************************************************************/
 
 extern uint32_t last_synced_time;
@@ -40,7 +30,7 @@ extern uint32_t last_synced_time;
 extern dwt_txconfig_t txconfig_options;
 
 /*********************************************************************************************************************************************************
- * 														Global Variables
+ *                                                      Global Variables
  *********************************************************************************************************************************************************/
 
 TaskHandle_t RTLS_task_handle = NULL;
@@ -61,29 +51,7 @@ DW3000_RTLS dw3000_rtls;
 Point2D tagPosition = {0.0, 0.0};
 
 /*********************************************************************************************************************************************************
- * 														    ISR Handlers
- *********************************************************************************************************************************************************/
-
-// UART ISR handler for Raspberry Pi
-void IRAM_ATTR onRaspDataAvailable(void *arg) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    vTaskNotifyGiveFromISR(rasp_recv_task_handle, &xHigherPriorityTaskWoken);
-    if (xHigherPriorityTaskWoken == pdTRUE) {
-        portYIELD_FROM_ISR();
-    }
-}
-
-// UART ISR handler for STM32
-void IRAM_ATTR onStm32DataAvailable(void *arg) {
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    vTaskNotifyGiveFromISR(stm32_recv_task_handle, &xHigherPriorityTaskWoken);
-    if (xHigherPriorityTaskWoken == pdTRUE) {
-        portYIELD_FROM_ISR();
-    }
-}
-
-/*********************************************************************************************************************************************************
- * 														    RTLS Constructors
+ *                                                          RTLS Constructors
  *********************************************************************************************************************************************************/
 
 void RTLSTaskWrapper(void *parameter) 
@@ -101,26 +69,34 @@ void RTLSTaskWrapper(void *parameter)
 }
 
 /*********************************************************************************************************************************************************
- * 														    Constructors
+ *                                                          Constructors
  *********************************************************************************************************************************************************/
 
-void setupUART(uart_port_t uart_num, int tx_pin, int rx_pin, int baud_rate, void (*isr_handler)(void*)) {
+void setupUART(uart_port_t uart_num, int tx_pin, int rx_pin, int baud_rate, QueueHandle_t *uart_queue) {
     uart_config_t uart_config = {
         .baud_rate = baud_rate,
         .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
+        .parity    = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_APB,
     };
-    uart_param_config(uart_num, &uart_config);
-    uart_set_pin(uart_num, tx_pin, rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
-    uart_driver_install(uart_num, 2048, 0, 0, NULL, 0);
-    uart_isr_register(uart_num, isr_handler, NULL, ESP_INTR_FLAG_IRAM, NULL);  // Pass NULL as the last parameter
-    uart_enable_rx_intr(uart_num);
+    if(uart_queue == NULL) {
+        ESP_ERROR_CHECK(uart_driver_install(uart_num, 2048, 0, 0, 0, 0));
+    } else {
+        ESP_ERROR_CHECK(uart_driver_install(uart_num, 2048, 0, 20, uart_queue, 0));
+    }
+
+    ESP_ERROR_CHECK(uart_param_config(uart_num, &uart_config));
+
+    if(tx_pin != 0 && rx_pin != 0) {
+        ESP_ERROR_CHECK(uart_set_pin(uart_num, tx_pin, rx_pin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    }
 }
 
 void setup()
 {
+    esp_log_level_set("*", ESP_LOG_NONE);
     /***************** RTLS Setup Begin *****************/
     
     dw3000_rtls.RTLSSetup();
@@ -129,10 +105,10 @@ void setup()
 
     /***************** RTLS Setup End *****************/
 
-
     /***************** Rasp Setup Begin *****************/
 
-    setupUART(RASP_UART_NUM, RASP_TX_PIN, RASP_RX_PIN, RASP_UART_BAUD, onRaspDataAvailable);
+    QueueHandle_t rasp_uart_queue;
+    setupUART(RASP_UART_NUM, RASP_TX_PIN, RASP_RX_PIN, RASP_UART_BAUD, &rasp_uart_queue);
 
     ESP_LOGI("MAIN", "Raspberry Pi UART Setup Complete");
 
@@ -140,7 +116,8 @@ void setup()
 
     /***************** STM32 Setup Begin *****************/
 
-    setupUART(STM32_UART_NUM, STM32_TX_PIN, STM32_RX_PIN, STM32_UART_BAUD, onStm32DataAvailable);
+    QueueHandle_t stm32_uart_queue;
+    setupUART(STM32_UART_NUM, STM32_TX_PIN, STM32_RX_PIN, STM32_UART_BAUD, &stm32_uart_queue);
 
     ESP_LOGI("MAIN", "STM32 UART Setup Complete");
 
@@ -159,29 +136,26 @@ void setup()
 
     /***************** Semaphore Setup End *****************/
 
-    // Core 1: RTLS Task -> Core 1: Stm32 Send Task -> Core 1: Rasp Send Task
-    // Core 0: Rasp Recv Task / Core 0: Stm32 Recv Task
-
     // Create Rasp Tasks
-    if (xTaskCreatePinnedToCore(raspRecvTask, "Recv Task", 1 << 14, NULL, 1, &rasp_recv_task_handle, 0) != pdPASS) {
+    if (xTaskCreatePinnedToCore(raspRecvTask, "RaspRecvTask", 4096, (void *)rasp_uart_queue, 1, &rasp_recv_task_handle, 0) != pdPASS) {
         ESP_LOGE("MAIN", "Failed to create Rasp Recv Task");
     }
 
-    if (xTaskCreatePinnedToCore(raspSendTask, "Send Task", 1 << 14, NULL, 1, &rasp_send_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(raspSendTask, "RaspSendTask", 4096, NULL, 1, &rasp_send_task_handle, 1) != pdPASS) {
         ESP_LOGE("MAIN", "Failed to create Rasp Send Task");
     }
 
     // Create STM32 Tasks
-    if (xTaskCreatePinnedToCore(stm32RecvTask, "Recv Task", 1 << 14, NULL, 2, &stm32_recv_task_handle, 0) != pdPASS) {
+    if (xTaskCreatePinnedToCore(stm32RecvTask, "STM32RecvTask", 4096, (void *)stm32_uart_queue, 2, &stm32_recv_task_handle, 0) != pdPASS) {
         ESP_LOGE("MAIN", "Failed to create STM32 Recv Task");
     }
 
-    if (xTaskCreatePinnedToCore(stm32SendTask, "Send Task", 1 << 14, NULL, 2, &stm32_send_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(stm32SendTask, "STM32SendTask", 4096, NULL, 2, &stm32_send_task_handle, 1) != pdPASS) {
         ESP_LOGE("MAIN", "Failed to create STM32 Send Task");
     }
 
     // Create RTLS Task
-    if (xTaskCreatePinnedToCore(RTLSTaskWrapper, "RTLS_Task", 1 << 16, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(RTLSTaskWrapper, "RTLS_Task", 8192, NULL, 3, &RTLS_task_handle, 1) != pdPASS) {
         ESP_LOGE("MAIN", "Failed to create RTLS Task");
     }
 
